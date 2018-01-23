@@ -1,0 +1,42 @@
+<map id="IPlugBase.h" name="IPlugBase.h">
+<area shape="rect" id="node2" href="$_i_plug_base_graphics_8h.html" title="An IPlugBase class for an IPlug plug&#45;in that uses IGraphics for it&#39;s UI. " alt="" coords="919,80,1064,107"/>
+<area shape="rect" id="node39" href="$_i_plug_a_u___view_factory_8mm_source.html" title="IPlugAU_ViewFactory.mm" alt="" coords="1089,80,1265,107"/>
+<area shape="rect" id="node40" href="$_i_plug_base_8cpp_source.html" title="IPlugBase.cpp" alt="" coords="1291,80,1397,107"/>
+<area shape="rect" id="node41" href="$_i_plug_w_a_m_8h_source.html" title="IPlugWAM.h" alt="" coords="1421,80,1517,107"/>
+<area shape="rect" id="node3" href="$_i_control_8h.html" title="The lowest level base class of an IGraphics control. " alt="" coords="443,155,521,181"/>
+<area shape="rect" id="node21" href="$_i_plug_base_graphics_8cpp_source.html" title="IPlugBaseGraphics.cpp" alt="" coords="913,304,1071,331"/>
+<area shape="rect" id="node26" href="$_i_plug_base__select_8h_source.html" title="IPlugBase_select.h" alt="" coords="1333,155,1467,181"/>
+<area shape="rect" id="node4" href="$_i_auto_g_u_i_8h_source.html" title="IAutoGUI.h" alt="" coords="611,229,699,256"/>
+<area shape="rect" id="node5" href="$_i_graphics_8h.html" title="The lowest level base class of an IGraphics context. " alt="" coords="379,229,468,256"/>
+<area shape="rect" id="node13" href="$_i_graphics_mac_8mm_source.html" title="IGraphicsMac.mm" alt="" coords="326,528,455,555"/>
+<area shape="rect" id="node22" href="$_i_control_8cpp_source.html" title="IControl.cpp" alt="" coords="493,229,587,256"/>
+<area shape="rect" id="node23" href="$_i_controls_8h.html" title="A collection of IControls for common UI widgets, such as knobs, sliders, switches. " alt="" coords="771,229,857,256"/>
+<area shape="rect" id="node25" href="$_i_graphics_live_edit_8h_source.html" title="IGraphicsLiveEdit.h" alt="" coords="149,229,284,256"/>
+<area shape="rect" id="node6" href="$_i_graphics_8cpp_source.html" title="IGraphics.cpp" alt="" coords="74,304,176,331"/>
+<area shape="rect" id="node7" href="$_i_graphics_a_g_g_8h_source.html" title="IGraphicsAGG.h" alt="" coords="201,304,319,331"/>
+<area shape="rect" id="node9" href="$_i_graphics_cairo_8h_source.html" title="IGraphicsCairo.h" alt="" coords="644,304,764,331"/>
+<area shape="rect" id="node11" href="$_i_graphics_lice_8h_source.html" title="IGraphicsLice.h" alt="" coords="343,304,456,331"/>
+<area shape="rect" id="node19" href="$_i_graphics_nano_v_g_8h_source.html" title="IGraphicsNanoVG.h" alt="" coords="481,304,620,331"/>
+<area shape="rect" id="node8" href="$_i_graphics_a_g_g_8cpp_source.html" title="IGraphicsAGG.cpp" alt="" coords="43,379,175,405"/>
+<area shape="rect" id="node10" href="$_i_graphics_cairo_8cpp_source.html" title="IGraphicsCairo.cpp" alt="" coords="805,379,939,405"/>
+<area shape="rect" id="node12" href="$_i_graphics_lice_8cpp_source.html" title="IGraphicsLice.cpp" alt="" coords="337,379,463,405"/>
+<area shape="rect" id="node15" href="$_i_graphics_mac_8h_source.html" title="IGraphicsMac.h" alt="" coords="488,379,603,405"/>
+<area shape="rect" id="node18" href="$_i_graphics_win_8h_source.html" title="IGraphicsWin.h" alt="" coords="200,379,311,405"/>
+<area shape="rect" id="node14" href="$_i_graphics_win_8cpp_source.html" title="IGraphicsWin.cpp" alt="" coords="209,453,335,480"/>
+<area shape="rect" id="node16" href="$_i_graphics_mac__view_8h_source.html" title="IGraphicsMac_view.h" alt="" coords="479,453,627,480"/>
+<area shape="rect" id="node17" href="$_i_graphics_mac__view_8mm_source.html" title="IGraphicsMac_view.mm" alt="" coords="480,528,643,555"/>
+<area shape="rect" id="node20" href="$_i_graphics_nano_v_g_8cpp_source.html" title="IGraphicsNanoVG.cpp" alt="" coords="627,379,780,405"/>
+<area shape="rect" id="node24" href="$_i_controls_8cpp_source.html" title="IControls.cpp" alt="" coords="789,304,888,331"/>
+<area shape="rect" id="node27" href="$_i_plug_a_a_x_8h.html" title="AAX API base class for an IPlug plug&#45;in, inherits from IPlugBase or IPlugBaseGraphics. " alt="" coords="1743,229,1833,256"/>
+<area shape="rect" id="node29" href="$_i_plug_a_p_p_8h.html" title="Standalone application base class for an IPlug plug&#45;in, inherits from IPlugBase or IPlugBaseGraphics..." alt="" coords="1109,229,1200,256"/>
+<area shape="rect" id="node31" href="$_i_plug_a_u_8h.html" title="AudioUnit v2 API base class for an IPlug plug&#45;in, inherits from IPlugBase or IPlugBaseGraphics. " alt="" coords="1237,229,1319,256"/>
+<area shape="rect" id="node33" href="$_i_plug_a_uv3_8h_source.html" title="IPlugAUv3.h" alt="" coords="1352,229,1448,256"/>
+<area shape="rect" id="node35" href="$_i_plug_v_s_t_8h.html" title="VST2.4 API base class for an IPlug plug&#45;in, inherits from IPlugBase or IPlugBaseGraphics. " alt="" coords="1478,229,1567,256"/>
+<area shape="rect" id="node37" href="$_i_plug_v_s_t3_8h.html" title="VST3 base class for an IPlug plug&#45;in, inherits from IPlugBase or IPlugBaseGraphics. " alt="" coords="1603,229,1699,256"/>
+<area shape="rect" id="node28" href="$_i_plug_a_a_x_8cpp_source.html" title="IPlugAAX.cpp" alt="" coords="1741,304,1845,331"/>
+<area shape="rect" id="node30" href="$_i_plug_a_p_p_8cpp_source.html" title="IPlugAPP.cpp" alt="" coords="1096,304,1200,331"/>
+<area shape="rect" id="node32" href="$_i_plug_a_u_8cpp_source.html" title="IPlugAU.cpp" alt="" coords="1224,304,1320,331"/>
+<area shape="rect" id="node34" href="$_i_plug_a_uv3_8mm_source.html" title="IPlugAUv3.mm" alt="" coords="1345,304,1455,331"/>
+<area shape="rect" id="node36" href="$_i_plug_v_s_t_8cpp_source.html" title="IPlugVST.cpp" alt="" coords="1479,304,1581,331"/>
+<area shape="rect" id="node38" href="$_i_plug_v_s_t3_8cpp_source.html" title="IPlugVST3.cpp" alt="" coords="1606,304,1716,331"/>
+</map>

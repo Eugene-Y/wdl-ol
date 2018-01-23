@@ -1,0 +1,8 @@
+<map id="IKnobControl" name="IKnobControl">
+<area shape="rect" id="node3" href="$class_a_g_knob_control.html" title="AGKnobControl" alt="" coords="302,5,415,32"/>
+<area shape="rect" id="node4" href="$class_i_knob_line_control.html" title="A knob that is just a line. " alt="" coords="297,56,420,83"/>
+<area shape="rect" id="node5" href="$class_i_knob_multi_control.html" title="A multibitmap knob. " alt="" coords="295,107,422,133"/>
+<area shape="rect" id="node6" href="$class_i_knob_rotater_control.html" title="A rotating knob. " alt="" coords="288,157,429,184"/>
+<area shape="rect" id="node7" href="$class_i_knob_rotating_mask_control.html" title="A knob that consists of a static base, a rotating mask, and a rotating top. " alt="" coords="269,208,448,235"/>
+<area shape="rect" id="node2" href="$class_i_control.html" title="The lowest level base class of an IGraphics control. " alt="" coords="6,107,74,133"/>
+</map>

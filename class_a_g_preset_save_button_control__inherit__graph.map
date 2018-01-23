@@ -1,0 +1,4 @@
+<map id="AGPresetSaveButtonControl" name="AGPresetSaveButtonControl">
+<area shape="rect" id="node2" href="$class_i_panel_control.html" title="A basic control to fill a rectangle with a color. " alt="" coords="49,80,151,107"/>
+<area shape="rect" id="node3" href="$class_i_control.html" title="The lowest level base class of an IGraphics control. " alt="" coords="66,5,133,32"/>
+</map>
