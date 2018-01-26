@@ -1,6 +1,7 @@
 #include "IPlugEffect.h"
 #include "IPlug_include_in_plug_src.h"
 #include "IControls.h"
+#include "IKeyboardControl.h"
 #include "config.h"
 
 class MyControl : public IControl
@@ -53,6 +54,8 @@ IPlugEffect::IPlugEffect(IPlugInstanceInfo instanceInfo)
   }));
   
 //  pGraphics->AttachControl(new IVKnobControl(*this, IRECT(kGainX, kGainY, kGainX + 100, kGainY + 100), kGain, COLOR_BLACK));
+
+  pGraphics->AttachControl(new IVKeyboardControl(*this, 50, 20, 0, 35));
 
   AttachGraphics(pGraphics);
 //  pGraphics->EnableLiveEdit(true);
