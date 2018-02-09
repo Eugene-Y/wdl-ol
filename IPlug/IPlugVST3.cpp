@@ -1,24 +1,56 @@
-// disable unknown pragmas warning MSVC
-#pragma warning (disable : 4068 )
-
-#include "IPlugVST3.h"
 #include <cstdio>
+
 #include "pluginterfaces/base/ustring.h"
 #include "pluginterfaces/base/ibstream.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/ivstevents.h"
 
+#include "IPlugVST3.h"
+
+
 using namespace Steinberg;
 using namespace Vst;
+
+#ifndef CUSTOM_BUSTYPE_FUNC
+static uint64_t GetAPIBusTypeForChannelIOConfig(int configIdx, ERoute dir, int busIdx, IOConfig* pConfig)
+{
+  assert(pConfig != nullptr);
+  assert(busIdx >= 0 && busIdx < pConfig->NBuses(dir));
+
+  int numChans = pConfig->GetBusInfo(dir, busIdx)->mNChans;
+
+  switch (numChans)
+  {
+    case 0: return kInvalidBusType;
+    case 1: return SpeakerArr::kMono;
+    case 2: return SpeakerArr::kStereo;
+    case 3: return SpeakerArr::k30Cine; // CHECK - not the same as protools
+    case 4: return SpeakerArr::kAmbi1stOrderACN;
+    case 5: return SpeakerArr::k50;
+    case 6: return SpeakerArr::k51;
+    case 7: return SpeakerArr::k70Cine;
+    case 8: return SpeakerArr::k71CineSideFill; // CHECK - not the same as protools
+    case 9: return SpeakerArr::kAmbi2cdOrderACN;
+    case 10:return SpeakerArr::k71_2; // aka k91Atmos
+    case 16:return SpeakerArr::kAmbi3rdOrderACN;
+    default:
+      DBGMSG("do not yet know what to do with here\n");
+      assert(0);
+      return kInvalidBusType;
+  }
+}
+#else
+extern uint64_t GetAPIBusTypeForChannelIOConfig(int configIdx, ERoutingDir dir, int busIdx, IOConfig* pConfig);
+#endif //CUSTOM_BUSTYPE_FUNC
 
 class IPlugVST3Parameter : public Parameter
 {
 public:
-  IPlugVST3Parameter (IParam* pParam, ParamID tag, UnitID unitID)
+  IPlugVST3Parameter(IParam* pParam, ParamID tag, UnitID unitID)
   : mIPlugParam(pParam)
   {
-    UString (info.title, str16BufferSize (String128)).assign (pParam->GetNameForHost());
-    UString (info.units, str16BufferSize (String128)).assign (pParam->GetLabelForHost());
+    UString(info.title, str16BufferSize(String128)).assign(pParam->GetNameForHost());
+    UString(info.units, str16BufferSize(String128)).assign(pParam->GetLabelForHost());
     
     precision = pParam->GetPrecision();
     
@@ -27,7 +59,7 @@ public:
     else
       info.stepCount = 0; // continuous
     
-    int32 flags = 0;
+    int32_t flags = 0;
 
     if (pParam->GetCanAutomate())
     {
@@ -40,74 +72,55 @@ public:
     info.unitId = unitID;
   }
   
-  virtual void toString (ParamValue valueNormalized, String128 string) const override
+  virtual void toString(ParamValue valueNormalized, String128 string) const override
   {
-    char disp[MAX_PARAM_DISPLAY_LEN];
-    mIPlugParam->GetDisplayForHost(valueNormalized, true, disp);
-    Steinberg::UString(string, 128).fromAscii(disp);
+    WDL_String display;
+    mIPlugParam->GetDisplayForHost(valueNormalized, true, display);
+    Steinberg::UString(string, 128).fromAscii(display.Get());
   }
   
-  virtual bool fromString (const TChar* string, ParamValue& valueNormalized) const override
+  virtual bool fromString(const TChar* string, ParamValue& valueNormalized) const override
   {
-    String str ((TChar*)string);
+    String str((TChar*)string);
     valueNormalized = mIPlugParam->GetNormalized(atof(str.text8()));
     
     return true;
   }
   
-  virtual Steinberg::Vst::ParamValue toPlain (ParamValue valueNormalized) const override
+  virtual Steinberg::Vst::ParamValue toPlain(ParamValue valueNormalized) const override
   {
     return mIPlugParam->GetNonNormalized(valueNormalized);
   }
   
-  virtual Steinberg::Vst::ParamValue toNormalized (ParamValue plainValue) const override
+  virtual Steinberg::Vst::ParamValue toNormalized(ParamValue plainValue) const override
   {
     return mIPlugParam->GetNormalized(valueNormalized);
   }
   
-  OBJ_METHODS (IPlugVST3Parameter, Parameter)
+  OBJ_METHODS(IPlugVST3Parameter, Parameter)
   
 protected:
   IParam* mIPlugParam;
 };
 
+#pragma mark - IPlugVST3 Constructor
+
 IPlugVST3::IPlugVST3(IPlugInstanceInfo instanceInfo, IPlugConfig c)
 : IPLUG_BASE_CLASS(c, kAPIVST3)
-, mScChans(c.plugScChans)
+, IPlugProcessor<PLUG_SAMPLE_DST>(c, kAPIVST3)
+, IPlugPresetHandler(c, kAPIVST3)
 {
+  AttachPresetHandler(this);
+
   SetInputChannelConnections(0, NInChannels(), true);
   SetOutputChannelConnections(0, NOutChannels(), true);
   
   if (NInChannels()) 
   {
-    mLatencyDelay = new NChanDelayLine<double>(NInChannels(), NOutChannels());
-    mLatencyDelay->SetDelayTime(c.latency);
+    mLatencyDelay = new NChanDelayLine<PLUG_SAMPLE_DST>(NInChannels(), NOutChannels());
+    mLatencyDelay->SetDelayTime(GetLatency());
   }
 
-  // initialize the bus labels
-  SetInputBusLabel(0, "Main Input");
-
-  if (mScChans)
-  {
-    SetInputBusLabel(1, "Aux Input");
-  }
-
-  if (IsInstrument())
-  {
-    int busNum = 0;
-    char label[32]; //TODO: 32!!!
-
-    for (int i = 0; i < NOutChannels(); i+=2) // stereo buses only
-    {
-      sprintf(label, "Output %i", busNum+1);
-      SetOutputBusLabel(busNum++, label);
-    }
-  }
-  else
-  {
-    SetOutputBusLabel(0, "Output");
-  }
-    
   // Make sure the process context is predictably initialised in case it is used before process is called
  
   memset(&mProcessContext, 0, sizeof(ProcessContext));
@@ -115,10 +128,9 @@ IPlugVST3::IPlugVST3(IPlugInstanceInfo instanceInfo, IPlugConfig c)
 
 IPlugVST3::~IPlugVST3() {}
 
-#pragma mark -
 #pragma mark AudioEffect overrides
 
-tresult PLUGIN_API IPlugVST3::initialize (FUnknown* context)
+tresult PLUGIN_API IPlugVST3::initialize(FUnknown* context)
 {
   TRACE;
 
@@ -137,41 +149,36 @@ tresult PLUGIN_API IPlugVST3::initialize (FUnknown* context)
 
   if (result == kResultOk)
   {
-    SpeakerArrangement maxInputs = getSpeakerArrForChans(NInChannels()-mScChans);
-    if(maxInputs < 0) maxInputs = 0;
-
-    // add io buses with the maximum i/o to start with
-
-    if (maxInputs)
-    {
-      Steinberg::UString(tmpStringBuf, 128).fromAscii(GetInputBusLabel(0)->Get(), 128);
-      addAudioInput(tmpStringBuf, maxInputs);
-    }
-
-    if(!mIsInstrument) // if effect, just add one output bus with max chan count
-    {
-      Steinberg::UString(tmpStringBuf, 128).fromAscii(GetOutputBusLabel(0)->Get(), 128);
-      addAudioOutput(tmpStringBuf, getSpeakerArrForChans(NOutChannels()) );
-    }
-    else
-    {
-      for (int i = 0, busIdx = 0; i < NOutChannels(); i+=2, busIdx++)
+//    for(auto configIdx = 0; configIdx < NIOConfigs(); configIdx++)
+//    {
+      int configIdx = NIOConfigs()-1;
+    
+      IOConfig* pConfig = GetIOConfig(configIdx);
+    
+      assert(pConfig);
+      for(auto busIdx = 0; busIdx < pConfig->NBuses(ERoute::kInput); busIdx++)
       {
-        Steinberg::UString(tmpStringBuf, 128).fromAscii(GetOutputBusLabel(busIdx)->Get(), 128);
-        addAudioOutput(tmpStringBuf, SpeakerArr::kStereo );
+        uint64_t busType = GetAPIBusTypeForChannelIOConfig(configIdx, ERoute::kInput, busIdx, pConfig);
+        
+        int flags = 0; //busIdx == 0 ? flags = Steinberg::Vst::BusInfo::BusFlags::kDefaultActive : flags = 0;
+        Steinberg::UString(tmpStringBuf, 128).fromAscii(pConfig->GetBusInfo(ERoute::kInput, busIdx)->mLabel.Get(), 128);
+        addAudioInput(tmpStringBuf, busType, (BusTypes) busIdx > 0, flags);
       }
-    }
+      
+      for(auto busIdx = 0; busIdx < pConfig->NBuses(ERoute::kOutput); busIdx++)
+      {
+        uint64_t busType = GetAPIBusTypeForChannelIOConfig(configIdx, ERoute::kOutput, busIdx, pConfig);
+        
+        int flags = 0; //busIdx == 0 ? flags = Steinberg::Vst::BusInfo::BusFlags::kDefaultActive : flags = 0;
+        Steinberg::UString(tmpStringBuf, 128).fromAscii(pConfig->GetBusInfo(ERoute::kOutput, busIdx)->mLabel.Get(), 128);
+        addAudioOutput(tmpStringBuf, busType, (BusTypes) busIdx > 0, flags);
+      }
+//    }
 
-    if (mScChans)
-    {
-      if (mScChans > 2) mScChans = 2;
-      Steinberg::UString(tmpStringBuf, 128).fromAscii(GetInputBusLabel(1)->Get(), 128);
-      addAudioInput(tmpStringBuf, getSpeakerArrForChans(mScChans), kAux, 0);
-    }
 
     if(DoesMIDI())
     {
-      addEventInput (STR16("MIDI Input"), 1);
+      addEventInput(STR16("MIDI Input"), 1);
       //addEventOutput(STR16("MIDI Output"), 1);
     }
 
@@ -185,7 +192,7 @@ tresult PLUGIN_API IPlugVST3::initialize (FUnknown* context)
                                             ParameterInfo::kIsProgramChange));
     }
 
-    if(!mIsInstrument)
+    if(!IsInstrument())
     {
       StringListParameter * bypass = new StringListParameter(STR16("Bypass"),
                                                             kBypassParam,
@@ -206,9 +213,9 @@ tresult PLUGIN_API IPlugVST3::initialize (FUnknown* context)
 
       if (CSTR_NOT_EMPTY(paramGroupName))
       {        
-        for(int j = 0; j < mParamGroups.GetSize(); j++)
+        for(int j = 0; j < NParamGroups(); j++)
         {
-          if(strcmp(paramGroupName, mParamGroups.Get(j)) == 0)
+          if(strcmp(paramGroupName, GetParamGroupName(j)) == 0)
           {
             unitID = j+1;
           }
@@ -216,8 +223,7 @@ tresult PLUGIN_API IPlugVST3::initialize (FUnknown* context)
         
         if (unitID == kRootUnitId) // new unit, nothing found, so add it
         {
-          mParamGroups.Add(paramGroupName);
-          unitID = mParamGroups.GetSize();
+          unitID = AddParamGroup(paramGroupName);
         }
       }
       
@@ -232,7 +238,7 @@ tresult PLUGIN_API IPlugVST3::initialize (FUnknown* context)
   return result;
 }
 
-tresult PLUGIN_API IPlugVST3::terminate ()
+tresult PLUGIN_API IPlugVST3::terminate()
 {
   TRACE;
 
@@ -240,7 +246,7 @@ tresult PLUGIN_API IPlugVST3::terminate ()
   return SingleComponentEffect::terminate();
 }
 
-tresult PLUGIN_API IPlugVST3::setBusArrangements(SpeakerArrangement* inputs, int32 numIns, SpeakerArrangement* outputs, int32 numOuts)
+tresult PLUGIN_API IPlugVST3::setBusArrangements(SpeakerArrangement* pInputBusArrangements, int32_t numInBuses, SpeakerArrangement* pOutputBusArrangements, int32_t numOutBuses)
 {
   TRACE;
 
@@ -248,55 +254,42 @@ tresult PLUGIN_API IPlugVST3::setBusArrangements(SpeakerArrangement* inputs, int
   SetInputChannelConnections(0, NInChannels(), false);
   SetOutputChannelConnections(0, NOutChannels(), false);
 
-  int32 reqNumInputChannels = SpeakerArr::getChannelCount(inputs[0]);  //requested # input channels
-  int32 reqNumOutputChannels = SpeakerArr::getChannelCount(outputs[0]);//requested # output channels
-
-  // legal io doesn't consider sidechain inputs
-  if (!LegalIO(reqNumInputChannels, reqNumOutputChannels))
-  {
-    return kResultFalse;
-  }
-
-  // handle input
-  AudioBus* bus = FCast<AudioBus>(audioInputs.at(0));
-
-  // if existing input bus has a different number of channels to the input bus being connected
-  if (bus && SpeakerArr::getChannelCount(bus->getArrangement()) != reqNumInputChannels)
-  {
-    audioInputs.erase(std::remove(audioInputs.begin(), audioInputs.end(), bus));
-    addAudioInput(USTRING("Input"), getSpeakerArrForChans(reqNumInputChannels));
-  }
-
-  // handle output
-  bus = FCast<AudioBus>(audioOutputs.at(0));
-  // if existing output bus has a different number of channels to the output bus being connected
-  if (bus && SpeakerArr::getChannelCount(bus->getArrangement()) != reqNumOutputChannels)
-  {
-    audioOutputs.erase(std::remove(audioOutputs.begin(), audioOutputs.end(), bus));
-    addAudioOutput(USTRING("Output"), getSpeakerArrForChans(reqNumOutputChannels));
-  }
-
-  if (!mScChans && numIns == 1) // No sidechain, every thing OK
-  {
-    return kResultTrue;
-  }
-
-  if (mScChans && numIns == 2) // numIns = num Input BUSes
-  {
-    int32 reqNumSideChainChannels = SpeakerArr::getChannelCount(inputs[1]);  //requested # sidechain input channels
-
-    bus = FCast<AudioBus>(audioInputs.at(1));
-
-    if (bus && SpeakerArr::getChannelCount(bus->getArrangement()) != reqNumSideChainChannels)
-    {
-      audioInputs.erase(std::remove(audioInputs.begin(), audioInputs.end(), bus));
-      addAudioInput(USTRING("Sidechain Input"), getSpeakerArrForChans(reqNumSideChainChannels), kAux, 0); // either mono or stereo
-    }
-
-    return kResultTrue;
-  }
-
-  return kResultFalse;
+  int NInputChannelCountOnBuses[MaxNBuses(ERoute::kInput)];
+  memset(NInputChannelCountOnBuses, 0, MaxNBuses(ERoute::kInput) * sizeof(int));
+  
+  int NOutputChannelCountOnBuses[MaxNBuses(ERoute::kOutput)];
+  memset(NOutputChannelCountOnBuses, 0, MaxNBuses(ERoute::kOutput) * sizeof(int));
+  
+//  for(auto busIdx = 0; busIdx < numIns; busIdx++)
+//  {
+//    AudioBus* pBus = FCast<AudioBus>(audioInputs.at(busIdx));
+//    const int NInputsRequired = SpeakerArr::getChannelCount(inputs[busIdx]);
+//    // if existing input bus has a different number of channels to the input bus being connected
+//    if (pBus && SpeakerArr::getChannelCount(pBus->getArrangement()) != NInputsRequired)
+//    {
+//      int flags = 0;
+//      busIdx == 0 ? flags = Steinberg::Vst::BusInfo::BusFlags::kDefaultActive : flags = 0;
+//      audioInputs.erase(std::remove(audioInputs.begin(), audioInputs.end(), pBus));
+//      addAudioInput(USTRING("Input"), (SpeakerArrangement) GetAPIBusTypeForChannelIOConfig(-1, -1, NInputsRequired), (BusTypes) busIdx > 0, flags);
+//
+//    }
+//  }
+//  
+//  for(auto busIdx = 0; busIdx < numOuts; busIdx++)
+//  {
+//    AudioBus* pBus = FCast<AudioBus>(audioOutputs.at(busIdx));
+//    const int NOutputsRequired = SpeakerArr::getChannelCount(outputs[busIdx]);
+//    // if existing input bus has a different number of channels to the input bus being connected
+//    if (pBus && SpeakerArr::getChannelCount(pBus->getArrangement()) != NOutputsRequired)
+//    {
+//      int flags = 0;
+//      busIdx == 0 ? flags = Steinberg::Vst::BusInfo::BusFlags::kDefaultActive : flags = 0;
+//      audioOutputs.erase(std::remove(audioOutputs.begin(), audioOutputs.end(), pBus));
+//      addAudioOutput(USTRING("Output"), (SpeakerArrangement) GetAPIBusTypeForChannelIOConfig(-1, -1, NOutputsRequired), (BusTypes) busIdx > 0, flags);
+//    }
+//  }
+  
+  return kResultTrue;
 }
 
 tresult PLUGIN_API IPlugVST3::setActive(TBool state)
@@ -308,15 +301,15 @@ tresult PLUGIN_API IPlugVST3::setActive(TBool state)
   return SingleComponentEffect::setActive(state);
 }
 
-tresult PLUGIN_API IPlugVST3::setupProcessing (ProcessSetup& newSetup)
+tresult PLUGIN_API IPlugVST3::setupProcessing(ProcessSetup& newSetup)
 {
   TRACE;
 
   if ((newSetup.symbolicSampleSize != kSample32) && (newSetup.symbolicSampleSize != kSample64)) return kResultFalse;
 
-  mSampleRate = newSetup.sampleRate;
-  mBypassed = false;
-  IPlugBase::SetBlockSize(newSetup.maxSamplesPerBlock);
+  SetSampleRate(newSetup.sampleRate);
+  SetBypassed(false);
+  IPlugProcessor::SetBlockSize(newSetup.maxSamplesPerBlock); // TODO: should IPlugVST3 call SetBlockSizein construct unlike other APIs?
   OnReset();
 
   processSetup = newSetup;
@@ -326,27 +319,29 @@ tresult PLUGIN_API IPlugVST3::setupProcessing (ProcessSetup& newSetup)
 
 tresult PLUGIN_API IPlugVST3::process(ProcessData& data)
 {
-  TRACE_PROCESS;
+  TRACE;
 
   if(data.processContext)
     memcpy(&mProcessContext, data.processContext, sizeof(ProcessContext));
 
+  PreProcess();
+  
   //process parameters
   IParameterChanges* paramChanges = data.inputParameterChanges;
   if (paramChanges)
   {
-    int32 numParamsChanged = paramChanges->getParameterCount();
+    int32_t numParamsChanged = paramChanges->getParameterCount();
 
     //it is possible to get a finer resolution of control here by retrieving more values (points) from the queue
     //for now we just grab the last one
 
-    for (int32 i = 0; i < numParamsChanged; i++)
+    for (int32_t i = 0; i < numParamsChanged; i++)
     {
       IParamValueQueue* paramQueue = paramChanges->getParameterData(i);
       if (paramQueue)
       {
-        int32 numPoints = paramQueue->getPointCount();
-        int32 offsetSamples;
+        int32_t numPoints = paramQueue->getPointCount();
+        int32_t offsetSamples;
         double value;
 
         if (paramQueue->getPoint(numPoints - 1,  offsetSamples, value) == kResultTrue)
@@ -357,27 +352,25 @@ tresult PLUGIN_API IPlugVST3::process(ProcessData& data)
           {
             case kBypassParam:
             {
-              bool bypassed = (value > 0.5);
-              
-              if (bypassed != mBypassed)
-              {
-                mBypassed = bypassed;
-              }
+             const bool bypassed = (value > 0.5);
+            
+              if (bypassed != GetBypassed())
+                SetBypassed(bypassed);
 
               break;
             }
             case kPresetParam:
-              RestorePreset(FromNormalizedParam(value, 0, NPresets(), 1.));
+              RestorePreset((int)round(FromNormalizedParam(value, 0, NPresets(), 1.)));
               break;
               //TODO: pitch bend, modwheel etc
             default:
               {
-                WDL_MutexLock lock(&mParams_mutex);
+                LOCK_PARAMS_MUTEX;
                 if (idx >= 0 && idx < NParams())
                 {
                   GetParam(idx)->SetNormalized((double)value);
                   SetParameterInUIFromAPI(idx, (double) value, true);
-                  OnParamChange(idx);
+                  OnParamChange(idx, kAutomation);
                 }
               }
               break;
@@ -394,8 +387,8 @@ tresult PLUGIN_API IPlugVST3::process(ProcessData& data)
     IEventList* eventList = data.inputEvents;
     if (eventList)
     {
-      int32 numEvent = eventList->getEventCount();
-      for (int32 i=0; i<numEvent; i++)
+      int32_t numEvent = eventList->getEventCount();
+      for (int32_t i=0; i<numEvent; i++)
       {
         Event event;
         if (eventList->getEvent(i, event) == kResultOk)
@@ -428,7 +421,7 @@ tresult PLUGIN_API IPlugVST3::process(ProcessData& data)
   {
     if (data.numInputs)
     {
-      if (mScChans)
+      if (HasSidechainInput())
       {
         if (getAudioInput(1)->isActive()) // Sidechain is active
         {
@@ -444,11 +437,11 @@ tresult PLUGIN_API IPlugVST3::process(ProcessData& data)
           }
 
           SetInputChannelConnections(0, NInChannels(), true);
-          SetInputChannelConnections(data.inputs[0].numChannels, NInChannels() - mScChans, false);
+          SetInputChannelConnections(data.inputs[0].numChannels, NInChannels() - NSidechainChannels(), false);
         }
 
-        AttachInputBuffers(0, NInChannels() - mScChans, data.inputs[0].channelBuffers32, data.numSamples);
-        AttachInputBuffers(mScChans, NInChannels() - mScChans, data.inputs[1].channelBuffers32, data.numSamples);
+        AttachInputBuffers(0, NInChannels() - NSidechainChannels(), data.inputs[0].channelBuffers32, data.numSamples);
+        AttachInputBuffers(NSidechainChannels(), NInChannels() - NSidechainChannels(), data.inputs[1].channelBuffers32, data.numSamples);
       }
       else
       {
@@ -479,7 +472,7 @@ tresult PLUGIN_API IPlugVST3::process(ProcessData& data)
   {
     if (data.numInputs)
     {
-      if (mScChans)
+      if (HasSidechainInput())
       {
         if (getAudioInput(1)->isActive()) // Sidechain is active
         {
@@ -495,11 +488,11 @@ tresult PLUGIN_API IPlugVST3::process(ProcessData& data)
           }
 
           SetInputChannelConnections(0, NInChannels(), true);
-          SetInputChannelConnections(data.inputs[0].numChannels, NInChannels() - mScChans, false);
+          SetInputChannelConnections(data.inputs[0].numChannels, NInChannels() - NSidechainChannels(), false);
         }
 
-        AttachInputBuffers(0, NInChannels() - mScChans, data.inputs[0].channelBuffers64, data.numSamples);
-        AttachInputBuffers(mScChans, NInChannels() - mScChans, data.inputs[1].channelBuffers64, data.numSamples);
+        AttachInputBuffers(0, NInChannels() - NSidechainChannels(), data.inputs[0].channelBuffers64, data.numSamples);
+        AttachInputBuffers(NSidechainChannels(), NInChannels() - NSidechainChannels(), data.inputs[1].channelBuffers64, data.numSamples);
       }
       else
       {
@@ -518,7 +511,7 @@ tresult PLUGIN_API IPlugVST3::process(ProcessData& data)
       chanOffset += busChannels;
     }
 
-    if (mBypassed)
+    if (GetBypassed())
       PassThroughBuffers(0.0, data.numSamples);
     else
       ProcessBuffers(0.0, data.numSamples); // process buffers double precision
@@ -544,7 +537,7 @@ tresult PLUGIN_API IPlugVST3::process(ProcessData& data)
 
 //TODO: VST3 State needs work
 
-tresult PLUGIN_API IPlugVST3::canProcessSampleSize(int32 symbolicSampleSize)
+tresult PLUGIN_API IPlugVST3::canProcessSampleSize(int32_t symbolicSampleSize)
 {
   tresult retval = kResultFalse;
 
@@ -562,17 +555,11 @@ tresult PLUGIN_API IPlugVST3::canProcessSampleSize(int32 symbolicSampleSize)
   return retval;
 }
 
-Steinberg::uint32 PLUGIN_API IPlugVST3::getLatencySamples () 
-{ 
-  return mLatency;
-} 
-
-#pragma mark -
 #pragma mark IEditController overrides
 
-IPlugView* PLUGIN_API IPlugVST3::createView (const char* name)
+IPlugView* PLUGIN_API IPlugVST3::createView(const char* name)
 {
-  if (name && strcmp (name, "editor") == 0)
+  if (name && strcmp(name, "editor") == 0)
   {
     IPlugVST3View* view = new IPlugVST3View(this);
     addDependentView(view);
@@ -596,14 +583,14 @@ tresult PLUGIN_API IPlugVST3::setEditorState(IBStream* state)
     state->read(chunk.GetBytes(), chunk.Size());
     UnserializeState(chunk, 0);
     
-    int32 savedBypass = 0;
+    int32_t savedBypass = 0;
     
-    if (state->read (&savedBypass, sizeof (int32)) != kResultOk)
+    if (state->read (&savedBypass, sizeof (int32_t)) != kResultOk)
     {
       return kResultFalse;
     }
     
-    mBypassed = (bool) savedBypass;
+    SetBypassed((bool) savedBypass);
     
     RedrawParamControls();
     return kResultOk;
@@ -631,15 +618,15 @@ tresult PLUGIN_API IPlugVST3::getEditorState(IBStream* state)
     return kResultFalse;
   }  
   
-  int32 toSaveBypass = mBypassed ? 1 : 0;
-  state->write(&toSaveBypass, sizeof (int32));  
+  int32_t toSaveBypass = GetBypassed() ? 1 : 0;
+  state->write(&toSaveBypass, sizeof (int32_t));
 
   return kResultOk;
 }
 
 ParamValue PLUGIN_API IPlugVST3::plainParamToNormalized(ParamID tag, ParamValue plainValue)
 {
-  WDL_MutexLock lock(&mParams_mutex);
+  LOCK_PARAMS_MUTEX;
   IParam* param = GetParam(tag);
 
   if (param)
@@ -654,14 +641,14 @@ ParamValue PLUGIN_API IPlugVST3::getParamNormalized(ParamID tag)
 {
   if (tag == kBypassParam) 
   {
-    return (ParamValue) mBypassed;
+    return (ParamValue) GetBypassed();
   }
 //   else if (tag == kPresetParam) 
 //   {
 //     return (ParamValue) ToNormalizedParam(mCurrentPresetIdx, 0, NPresets(), 1.);
 //   }
 
-  WDL_MutexLock lock(&mParams_mutex);
+  LOCK_PARAMS_MUTEX;
   IParam* param = GetParam(tag);
 
   if (param)
@@ -674,7 +661,7 @@ ParamValue PLUGIN_API IPlugVST3::getParamNormalized(ParamID tag)
 
 tresult PLUGIN_API IPlugVST3::setParamNormalized(ParamID tag, ParamValue value)
 {
-  WDL_MutexLock lock(&mParams_mutex);
+  LOCK_PARAMS_MUTEX;
   IParam* param = GetParam(tag);
 
   if (param)
@@ -688,23 +675,23 @@ tresult PLUGIN_API IPlugVST3::setParamNormalized(ParamID tag, ParamValue value)
 
 tresult PLUGIN_API IPlugVST3::getParamStringByValue(ParamID tag, ParamValue valueNormalized, String128 string)
 {
-  WDL_MutexLock lock(&mParams_mutex);
+  LOCK_PARAMS_MUTEX;
   IParam* param = GetParam(tag);
 
   if (param)
   {
-    char disp[MAX_PARAM_NAME_LEN];
-    param->GetDisplayForHost(valueNormalized, true, disp);
-    Steinberg::UString(string, 128).fromAscii(disp);
+    WDL_String display;
+    param->GetDisplayForHost(valueNormalized, true, display);
+    Steinberg::UString(string, 128).fromAscii(display.Get());
     return kResultTrue;
   }
 
   return kResultFalse;
 }
 
-tresult PLUGIN_API IPlugVST3::getParamValueByString (ParamID tag, TChar* string, ParamValue& valueNormalized)
+tresult PLUGIN_API IPlugVST3::getParamValueByString(ParamID tag, TChar* string, ParamValue& valueNormalized)
 {
-  return SingleComponentEffect::getParamValueByString (tag, string, valueNormalized);
+  return SingleComponentEffect::getParamValueByString(tag, string, valueNormalized);
 }
 
 void IPlugVST3::addDependentView(IPlugVST3View* view)
@@ -738,52 +725,28 @@ tresult IPlugVST3::endEdit(ParamID tag)
   return kResultFalse;
 }
 
-AudioBus* IPlugVST3::getAudioInput (int32 index)
+AudioBus* IPlugVST3::getAudioInput (int32_t index)
 {
-  AudioBus* bus = FCast<AudioBus> (audioInputs.at(index));
+  AudioBus* bus = FCast<AudioBus>(audioInputs.at(index));
   return bus;
 }
 
-AudioBus* IPlugVST3::getAudioOutput (int32 index)
+AudioBus* IPlugVST3::getAudioOutput (int32_t index)
 {
-  AudioBus* bus = FCast<AudioBus> (audioOutputs.at(index));
+  AudioBus* bus = FCast<AudioBus>(audioOutputs.at(index));
   return bus;
 }
 
-// TODO: more speaker arrs
-SpeakerArrangement IPlugVST3::getSpeakerArrForChans(int32 chans)
-{
-  switch (chans)
-  {
-    case 1:
-      return SpeakerArr::kMono;
-    case 2:
-      return SpeakerArr::kStereo;
-    case 3:
-      return SpeakerArr::k30Music;
-    case 4:
-      return SpeakerArr::kAmbi1stOrderACN;
-    case 5:
-      return SpeakerArr::k50;
-    case 6:
-      return SpeakerArr::k51;
-    default:
-      return SpeakerArr::kEmpty;
-      break;
-  }
-}
-
-#pragma mark -
 #pragma mark IUnitInfo overrides
 
-int32 PLUGIN_API IPlugVST3::getUnitCount()
+int32_t PLUGIN_API IPlugVST3::getUnitCount()
 {
   TRACE;
   
-  return mParamGroups.GetSize() + 1;
+  return NParamGroups() + 1;
 }
 
-tresult PLUGIN_API IPlugVST3::getUnitInfo(int32 unitIndex, UnitInfo& info)
+tresult PLUGIN_API IPlugVST3::getUnitInfo(int32_t unitIndex, UnitInfo& info)
 {
   TRACE;
   
@@ -800,14 +763,14 @@ tresult PLUGIN_API IPlugVST3::getUnitInfo(int32 unitIndex, UnitInfo& info)
 #endif
     return kResultTrue;
   }
-  else if (unitIndex > 0 && mParamGroups.GetSize()) 
+  else if (unitIndex > 0 && NParamGroups())
   {
     info.id = unitIndex;
     info.parentUnitId = kRootUnitId;
     info.programListId = kNoProgramListId;
     
     UString name(info.name, 128);
-    name.fromAscii(mParamGroups.Get(unitIndex-1));
+    name.fromAscii(GetParamGroupName(unitIndex-1));
     
     return kResultTrue;
   }
@@ -815,7 +778,7 @@ tresult PLUGIN_API IPlugVST3::getUnitInfo(int32 unitIndex, UnitInfo& info)
   return kResultFalse;
 }
 
-int32 PLUGIN_API IPlugVST3::getProgramListCount()
+int32_t PLUGIN_API IPlugVST3::getProgramListCount()
 {
 #ifdef VST3_PRESET_LIST
   return (NPresets() > 0);
@@ -824,12 +787,12 @@ int32 PLUGIN_API IPlugVST3::getProgramListCount()
 #endif
 }
 
-tresult PLUGIN_API IPlugVST3::getProgramListInfo(int32 listIndex, ProgramListInfo& info /*out*/)
+tresult PLUGIN_API IPlugVST3::getProgramListInfo(int32_t listIndex, ProgramListInfo& info /*out*/)
 {
   if (listIndex == 0)
   {
     info.id = kPresetParam;
-    info.programCount = (int32) NPresets();
+    info.programCount = (int32_t) NPresets();
     UString name(info.name, 128);
     name.fromAscii("Factory Presets");
     return kResultTrue;
@@ -837,7 +800,7 @@ tresult PLUGIN_API IPlugVST3::getProgramListInfo(int32 listIndex, ProgramListInf
   return kResultFalse;
 }
 
-tresult PLUGIN_API IPlugVST3::getProgramName(ProgramListID listId, int32 programIndex, String128 name /*out*/)
+tresult PLUGIN_API IPlugVST3::getProgramName(ProgramListID listId, int32_t programIndex, String128 name /*out*/)
 {
   if (listId == kPresetParam)
   {
@@ -847,7 +810,6 @@ tresult PLUGIN_API IPlugVST3::getProgramName(ProgramListID listId, int32 program
   return kResultFalse;
 }
 
-#pragma mark -
 #pragma mark IPlugBase overrides
 
 void IPlugVST3::BeginInformHostOfParamChange(int idx)
@@ -868,36 +830,6 @@ void IPlugVST3::EndInformHostOfParamChange(int idx)
   endEdit(idx);
 }
 
-void IPlugVST3::GetTime(ITimeInfo& timeInfo)
-{
-  timeInfo.mSamplePos = (double) mProcessContext.projectTimeSamples;
-  timeInfo.mPPQPos = mProcessContext.projectTimeMusic;
-  timeInfo.mTempo = mProcessContext.tempo;
-  timeInfo.mLastBar = mProcessContext.barPositionMusic;
-  timeInfo.mCycleStart = mProcessContext.cycleStartMusic;
-  timeInfo.mCycleEnd = mProcessContext.cycleEndMusic;
-  timeInfo.mNumerator = mProcessContext.timeSigNumerator;
-  timeInfo.mDenominator = mProcessContext.timeSigDenominator;
-  timeInfo.mTransportIsRunning = mProcessContext.state & ProcessContext::kPlaying;
-  timeInfo.mTransportLoopEnabled = mProcessContext.state & ProcessContext::kCycleActive;
-}
-
-double IPlugVST3::GetTempo()
-{
-  return mProcessContext.tempo;
-}
-
-void IPlugVST3::GetTimeSig(int& numerator, int& denominator)
-{
-  numerator = mProcessContext.timeSigNumerator;
-  denominator = mProcessContext.timeSigDenominator;
-}
-
-int IPlugVST3::GetSamplePos()
-{
-  return (int) mProcessContext.projectTimeSamples;
-}
-
 void IPlugVST3::ResizeGraphics(int w, int h, double scale)
 {
   if (GetHasUI())
@@ -908,14 +840,34 @@ void IPlugVST3::ResizeGraphics(int w, int h, double scale)
 
 void IPlugVST3::SetLatency(int latency)
 {
-  IPlugBase::SetLatency(latency);
+  IPlugProcessor::SetLatency(latency);
 
   FUnknownPtr<IComponentHandler>handler(componentHandler);
   handler->restartComponent(kLatencyChanged);  
 }
 
-#pragma mark -
-#pragma mark IPlugVST3View
+#pragma mark IPlugVST3
+void IPlugVST3::PreProcess()
+{
+  ITimeInfo timeInfo;
+  
+  if(mProcessContext.state & ProcessContext::kProjectTimeMusicValid)
+    timeInfo.mSamplePos = (double) mProcessContext.projectTimeSamples;
+  timeInfo.mPPQPos = mProcessContext.projectTimeMusic;
+  timeInfo.mTempo = mProcessContext.tempo;
+  timeInfo.mLastBar = mProcessContext.barPositionMusic;
+  timeInfo.mCycleStart = mProcessContext.cycleStartMusic;
+  timeInfo.mCycleEnd = mProcessContext.cycleEndMusic;
+  timeInfo.mNumerator = mProcessContext.timeSigNumerator;
+  timeInfo.mDenominator = mProcessContext.timeSigDenominator;
+  timeInfo.mTransportIsRunning = mProcessContext.state & ProcessContext::kPlaying;
+  timeInfo.mTransportLoopEnabled = mProcessContext.state & ProcessContext::kCycleActive;
+  const bool offline = processSetup.processMode == Steinberg::Vst::kOffline;
+  SetTimeInfo(timeInfo);
+  SetRenderingOffline(offline);
+}
+
+#pragma mark - IPlugVST3View
 IPlugVST3View::IPlugVST3View(IPlugVST3* pPlug)
   : mPlug(pPlug)
   , mExpectingNewSize(false)
@@ -928,7 +880,7 @@ IPlugVST3View::~IPlugVST3View()
 {
   if (mPlug)
   {
-    mPlug->removeDependentView (this);
+    mPlug->removeDependentView(this);
     mPlug->release();
   }
 }
@@ -938,13 +890,13 @@ tresult PLUGIN_API IPlugVST3View::isPlatformTypeSupported(FIDString type)
   if(mPlug->GetHasUI()) // for no editor plugins
   {
 #ifdef OS_WIN
-    if (strcmp (type, kPlatformTypeHWND) == 0)
+    if (strcmp(type, kPlatformTypeHWND) == 0)
       return kResultTrue;
 
-#elif defined OS_OSX
+#elif defined OS_MAC
     if (strcmp (type, kPlatformTypeNSView) == 0)
       return kResultTrue;
-    else if (strcmp (type, kPlatformTypeHIView) == 0)
+    else if (strcmp(type, kPlatformTypeHIView) == 0)
       return kResultTrue;
 #endif
   }
@@ -986,14 +938,14 @@ tresult PLUGIN_API IPlugVST3View::getSize(ViewRect* size)
   }
 }
 
-tresult PLUGIN_API IPlugVST3View::attached (void* parent, FIDString type)
+tresult PLUGIN_API IPlugVST3View::attached(void* parent, FIDString type)
 {
   if (mPlug->GetHasUI())
   {
     #ifdef OS_WIN
-    if (strcmp (type, kPlatformTypeHWND) == 0)
+    if (strcmp(type, kPlatformTypeHWND) == 0)
       mPlug->OpenWindow(parent);
-    #elif defined OS_OSX
+    #elif defined OS_MAC
     if (strcmp (type, kPlatformTypeNSView) == 0)
       mPlug->OpenWindow(parent);
     else // Carbon

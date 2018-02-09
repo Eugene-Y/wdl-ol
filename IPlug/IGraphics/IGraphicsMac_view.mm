@@ -1,3 +1,5 @@
+#ifndef NO_IGRAPHICS
+
 #import "IGraphicsMac_view.h"
 
 @implementation IGRAPHICS_MENU_RCVR
@@ -25,11 +27,11 @@
 
   [self setAutoenablesItems:NO];
 
-  int numItems = pMenu->GetNItems();
+  int numItems = pMenu->NItems();
 
   for (int i = 0; i < numItems; ++i)
   {
-    IPopupMenuItem* menuItem = pMenu->GetItem(i);
+    IPopupMenu::Item* menuItem = pMenu->GetItem(i);
 
     nsMenuItemTitle = [[[NSMutableString alloc] initWithCString:menuItem->GetText() encoding:NSUTF8StringEncoding] autorelease];
 
@@ -468,14 +470,9 @@ inline int GetMouseOver(IGraphicsMac* pGraphics)
   char* txt = (char*)[[mTextFieldView stringValue] UTF8String];
 
   if (mEdParam)
-  {
     mGraphics->SetFromStringAfterPrompt(mEdControl, mEdParam, txt);
-  }
-  else
-  {
-    mEdControl->TextFromTextEntry(txt);
-  }
   
+  mEdControl->OnTextEntryCompletion(txt);
   mGraphics->SetAllControlsDirty();
   
   [self endUserInput ];
@@ -523,7 +520,7 @@ inline int GetMouseOver(IGraphicsMac* pGraphics)
     associatedIPopupMenu->SetChosenItemIdx((int) chosenItemIdx);
     return associatedIPopupMenu;
   }
-  else return 0;
+  else return nullptr;
 }
 
 - (void) createTextEntry: (IControl*) pControl : (IParam*) pParam : (const IText&) text : (const char*) str : (NSRect) areaRect;
@@ -667,5 +664,6 @@ inline int GetMouseOver(IGraphicsMac* pGraphics)
   return YES;
 }
 
-
 @end
+
+#endif //NO_IGRAPHICS

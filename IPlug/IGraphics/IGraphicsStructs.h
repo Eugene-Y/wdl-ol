@@ -7,7 +7,7 @@
 
 #include "wdlstring.h"
 #include "ptrlist.h"
-#ifdef OS_OSX
+#ifdef OS_MAC
 #include "swell.h"
 #endif
 
@@ -27,53 +27,123 @@ class LICE_IFont;
  * @{
  */
 
+class APIBitmap
+{
+    
+public:
+    
+    APIBitmap(void* pBitmap, int w, int h, int s) : bitmap(pBitmap), width(w), height(h), scale(s) {}
+    APIBitmap() : bitmap(nullptr), width(0), height(0), scale(0) {}
+    virtual ~APIBitmap() {}
+    
+    void SetBitmap(void* pBitmap, int w, int h, int s)
+    {
+      assert(((w % s) == 0) && ((h % s) == 0));
+      
+      bitmap = pBitmap;
+      width = w;
+      height = h;
+      scale = s;
+    }
+    
+    void* GetBitmap() const { return bitmap; }
+    int GetWidth() const { return width; }
+    int GetHeight() const { return height; }
+    int GetScale() const { return scale; }
+    
+private:
+    
+    void* bitmap;
+    int width;
+    int height;
+    int scale;
+};
+
 /** Used to manage bitmap data, independant of draw class/platform.
  * An IBitmap's width and height are always in relation to a 1:1 (low dpi) screen. Any scaling happens at the drawing stage. */
-struct IBitmap
+class IBitmap
 {
-  /** Pointer to the raw bitmap data */
-  void* mData;
-  /** Bitmap width (in pixels) */
-  int W;
-  /** Bitmap height (in pixels) */
-  int H;
-  /** Number of frames (for stacked bitmaps) */
-  int N;
-  /** \c True if the frames are positioned horizontally */
-  bool mFramesAreHorizontal;
-  /** Maximum scaling allowed for the bitmap (typically 1) */
-  /** @todo Subject to change */
-  double mSourceScale;
-  /** Resource path/name for the bitmap */
-  WDL_String mResourceName;
+    
+public:
+    
   /** Creates a new IBitmap object
-   * @param pData Pointer to the raw bitmap data
-   * @param w Bitmap width (in pixels)
-   * @param h Bitmap height (in pixels)
-   * @param n Number of frames (for multibitmaps)
-   * @param framesAreHorizontal \c True if the frames are positioned horizontally
-   * @param sourceScale Scaling of the original bitmap (typically 1, 2 would be for a @2x hi dpi bitmap) @todo Subject to change
-   * @param name Resource name for the bitmap
-   */
-  IBitmap(void* pData = nullptr, int w = 0, int h = 0, int n = 1, bool framesAreHorizontal = false, double sourceScale = 1., const char* name = "")
-    : mData(pData)
-    , W(w)
-    , H(h)
-    , N(n)
+  * @param pData Pointer to the raw bitmap data
+  * @param w Bitmap width (in pixels)
+  * @param h Bitmap height (in pixels)
+  * @param n Number of frames (for multibitmaps)
+  * @param framesAreHorizontal \c True if the frames are positioned horizontally
+  * @param sourceScale Scaling of the original bitmap (typically 1, 2 would be for a @2x hi dpi bitmap) @todo Subject to change
+  * @param name Resource name for the bitmap
+  */
+    
+  IBitmap(APIBitmap* pAPIBitmap, int n, bool framesAreHorizontal, const char* name = "")
+    : mAPIBitmap(pAPIBitmap)
+    , mW(pAPIBitmap->GetWidth() / pAPIBitmap->GetScale())
+    , mH(pAPIBitmap->GetHeight() / pAPIBitmap->GetScale())
+    , mN(n)
     , mFramesAreHorizontal(framesAreHorizontal)
-    , mSourceScale(sourceScale)
+    , mScale(pAPIBitmap->GetScale())
     , mResourceName(name, (int) strlen(name))
   {
   }
-
+    
+  IBitmap() : mAPIBitmap(nullptr), mW(0), mH(0), mN(0), mFramesAreHorizontal(false), mScale(0)
+  {
+  }
+    
   /**
-   * @return Width of a single frame
+  * @return overall bitmap width
   */
-  inline int FW() const { return (mFramesAreHorizontal ? W / N : W); }
+  inline int W() const { return mW; }
   /**
-   * @return Height of a single frame
-   */
-  inline int FH() const { return (mFramesAreHorizontal ? H : H / N); }
+  * @return overall bitmap height
+  */
+  inline int H() const { return mH; }
+  /**
+  * @return Width of a single frame
+  */
+  inline int FW() const { return (mFramesAreHorizontal ? mW / mN : mW); }
+  /**
+  * @return Height of a single frame
+  */
+  inline int FH() const { return (mFramesAreHorizontal ? mH : mH / mN); }
+  /**
+  * @return number of frames
+  */
+  inline int N() const { return mN; }
+  /**
+  * @return a pointer to the referencied APIBitmap
+  */
+  inline APIBitmap* GetAPIBitmap() const { return mAPIBitmap; }
+  /**
+  * @return the raw underlying bitmap
+  */
+  inline void* GetRawBitmap() const { return mAPIBitmap->GetBitmap(); }
+  /**
+  * @return whether or not frames are stored horiztonally
+  */
+  inline bool GetFramesAreHorizontal() const { return mFramesAreHorizontal; }
+  /**
+  * @return the resource name
+  */
+  inline const WDL_String& GetResourceName() const { return mResourceName; }
+    
+private:
+    
+  /** Pointer to the API specific bitmap data */
+  APIBitmap* mAPIBitmap;
+  /** Bitmap width (in pixels) */
+  int mW;
+  /** Bitmap height (in pixels) */
+  int mH;
+  /** Number of frames (for stacked bitmaps) */
+  int mN;
+  /** \c True if the frames are positioned horizontally */
+  bool mFramesAreHorizontal;
+  /** Scale of this bitmap */
+  int mScale;
+  /** Resource path/name for the bitmap */
+  WDL_String mResourceName;
 };
 
 struct ISVG
@@ -113,7 +183,16 @@ struct IColor
   bool Empty() const { return A == 0 && R == 0 && G == 0 && B == 0; }
   void Clamp() { A = std::min(A, 255); R = std::min(R, 255); G = std::min(G, 255); B = std::min(B, 255); }
   void Randomise(int alpha = 255) { A = alpha; R = std::rand() % 255; G = std::rand() % 255; B = std::rand() % 255; }
-  IColor AddContrast(double c)
+  
+  void AddContrast(double c)
+  {
+    const int mod = int(c * 255.);
+    R = std::min(R += mod, 255);
+    G = std::min(G += mod, 255);
+    B = std::min(B += mod, 255);
+  }
+  
+  IColor GetContrasted(double c) const
   {
     const int mod = int(c * 255.);
     IColor n = *this;
@@ -122,6 +201,14 @@ struct IColor
     n.B = std::min(n.B += mod, 255);
     return n;
   }
+  
+  int GetLuminocity() const
+  {
+    auto min = R < G ? (R < B ? R : B) : (G < B ? G : B);
+    auto max = R > G ? (R > B ? R : B) : (G > B ? G : B);
+    return (min + max) / 2;
+  };
+
 };
 
 const IColor COLOR_TRANSPARENT(0, 0, 0, 0);
@@ -133,6 +220,43 @@ const IColor COLOR_GREEN(255, 0, 255, 0);
 const IColor COLOR_BLUE(255, 0, 0, 255);
 const IColor COLOR_YELLOW(255, 255, 255, 0);
 const IColor COLOR_ORANGE(255, 255, 127, 0);
+
+const IColor DEFAULT_GRAPHICS_BGCOLOR = COLOR_GRAY;
+const IColor DEFAULT_BGCOLOR = COLOR_BLACK;
+const IColor DEFAULT_FGCOLOR = COLOR_WHITE;
+const IColor DEFAULT_FRCOLOR = COLOR_BLACK;
+const IColor DEFAULT_HLCOLOR = COLOR_YELLOW;
+const IColor DEFAULT_X1COLOR = COLOR_RED;
+const IColor DEFAULT_X2COLOR = COLOR_GREEN;
+const IColor DEFAULT_X3COLOR = COLOR_BLUE;
+
+const IColor DEFAULT_TEXTENTRY_BGCOLOR = COLOR_WHITE;
+const IColor DEFAULT_TEXTENTRY_FGCOLOR = COLOR_BLACK;
+
+struct IVColorSpec
+{
+  IColor mBGColor = DEFAULT_BGCOLOR;
+  IColor mFGColor = DEFAULT_FGCOLOR;
+  IColor mFRColor = DEFAULT_FRCOLOR;
+  IColor mHLColor = DEFAULT_HLCOLOR;
+  IColor mX1Color = DEFAULT_X1COLOR;
+  IColor mX2Color = DEFAULT_X2COLOR;
+  IColor mX3Color = DEFAULT_X3COLOR;
+  
+  void SetColors(const IColor BGColor = DEFAULT_BGCOLOR,
+                 const IColor FGColor = DEFAULT_FGCOLOR,
+                 const IColor FRColor = DEFAULT_FRCOLOR,
+                 const IColor HLColor = DEFAULT_HLCOLOR,
+                 const IColor X1Color = DEFAULT_X1COLOR,
+                 const IColor X2Color = DEFAULT_X2COLOR,
+                 const IColor X3Color = DEFAULT_X3COLOR)
+  {
+  }
+  
+  void ResetColors() { SetColors(); }
+};
+
+const IVColorSpec DEFAULT_SPEC = IVColorSpec();
 
 /** Used to manage composite/blend operations, independant of draw class/platform */
 struct IBlend
@@ -158,51 +282,41 @@ const IBlend BLEND_50 = IBlend(kBlendNone, 0.5f);
 const IBlend BLEND_25 = IBlend(kBlendNone, 0.25f);
 const IBlend BLEND_10 = IBlend(kBlendNone, 0.1f);
 
-const IColor DEFAULT_BGCOLOR = COLOR_WHITE;
-const IColor DEFAULT_FGCOLOR = COLOR_BLACK;
-
 /** Used to manage font and text/text entry style, independant of draw class/platform.*/
 struct IText
 {
   char mFont[FONT_LEN];
-  int mSize = DEFAULT_TEXT_SIZE;
-  IColor mColor;
-  IColor mTextEntryBGColor = DEFAULT_BGCOLOR;
-  IColor mTextEntryFGColor = DEFAULT_FGCOLOR;
-  enum EStyle { kStyleNormal, kStyleBold, kStyleItalic } mStyle = kStyleNormal;
-  enum EAlign { kAlignNear, kAlignCenter, kAlignFar } mAlign = kAlignCenter;
+  int mSize;
+  IColor mFGColor;
+  IColor mTextEntryBGColor;
+  IColor mTextEntryFGColor;
+  enum EStyle { kStyleNormal, kStyleBold, kStyleItalic } mStyle;
+  enum EAlign { kAlignNear, kAlignCenter, kAlignFar } mAlign;
   int mOrientation = 0; // Degrees ccwise from normal.
   enum EQuality { kQualityDefault, kQualityNonAntiAliased, kQualityAntiAliased, kQualityClearType } mQuality = kQualityDefault;
   mutable LICE_IFont* mCached = nullptr;
   mutable double mCachedScale = 1.0;
 
-  IText(int size = DEFAULT_TEXT_SIZE,
-        const IColor& color = DEFAULT_FGCOLOR,
+  IText(const IColor& color = DEFAULT_FGCOLOR,
+        int size = DEFAULT_TEXT_SIZE,
         const char* font = nullptr,
         EStyle style = kStyleNormal,
         EAlign align = kAlignCenter,
         int orientation = 0,
         EQuality quality = kQualityDefault,
-        const IColor& teBGColor = DEFAULT_BGCOLOR,
-        const IColor& teFGColor = DEFAULT_FGCOLOR)
+        const IColor& TEBGColor = DEFAULT_TEXTENTRY_BGCOLOR,
+        const IColor& TEFGColor = DEFAULT_TEXTENTRY_FGCOLOR)
     : mSize(size)
-    , mColor(color)
+    , mFGColor(color)
     , mStyle(style)
     , mAlign(align)
     , mOrientation(orientation)
     , mQuality(quality)
-    , mTextEntryBGColor(teBGColor)
-    , mTextEntryFGColor(teFGColor)
+    , mTextEntryBGColor(TEBGColor)
+    , mTextEntryFGColor(TEFGColor)
   {
     strcpy(mFont, (font ? font : DEFAULT_FONT));
   }
-
-  IText(const IColor& color)
-  : mColor(color)
-  {
-    strcpy(mFont, DEFAULT_FONT);
-  }
-
 };
 
 const IText DEFAULT_TEXT = IText();
@@ -250,7 +364,7 @@ struct IRECT
   inline float MW() const { return 0.5f * (L + R); }
   inline float MH() const { return 0.5f * (T + B); }
 
-  inline IRECT Union(const IRECT& rhs)
+  inline IRECT Union(const IRECT& rhs) const
   {
     if (Empty()) { return rhs; }
     if (rhs.Empty()) { return *this; }
@@ -289,7 +403,7 @@ struct IRECT
     else if (y > B) y = B;
   }
 
-  inline IRECT SubRectVertical(int numSlices, int sliceIdx)
+  inline IRECT SubRectVertical(int numSlices, int sliceIdx) const
   {
     float heightOfSubRect = H() / (float) numSlices;
     float t = heightOfSubRect * (float) sliceIdx;
@@ -297,7 +411,7 @@ struct IRECT
     return IRECT(L, T + t, R, T + t + heightOfSubRect);
   }
 
-  inline IRECT SubRectHorizontal(int numSlices, int sliceIdx)
+  inline IRECT SubRectHorizontal(int numSlices, int sliceIdx) const
   {
     float widthOfSubRect = W() / (float) numSlices;
     float l = widthOfSubRect * (float) sliceIdx;
@@ -305,22 +419,44 @@ struct IRECT
     return IRECT(L + l, T, L + l + widthOfSubRect, B);
   }
   
-  inline IRECT GetPadded(float padding)
+  inline IRECT GetGridCell(int cellIndex, int nRows, int nColumns, EDirection = kHorizontal) const
+  {
+    assert(cellIndex <= nRows * nColumns);
+    
+    int cell = 0;
+    for(int column = 0; column<nColumns; column++)
+    {
+      for(int row = 0; row<nRows; row++)
+      {
+        if(cell == cellIndex)
+        {
+          const IRECT hrect = SubRectHorizontal(nRows, row);
+          return hrect.SubRectVertical(nColumns, column);
+        }
+        
+        cell++;
+      }
+    }
+    
+    return *this;
+  }
+  
+  inline IRECT GetPadded(float padding) const
   {
     return IRECT(L-padding, T-padding, R+padding, B+padding);
   }
   
-  inline IRECT GetPadded(float padL, float padT, float padR, float padB)
+  inline IRECT GetPadded(float padL, float padT, float padR, float padB) const
   {
     return IRECT(L+padL, T+padT, R+padR, B+padB);
   }
   
-  inline IRECT GetHPadded(float padding)
+  inline IRECT GetHPadded(float padding) const
   {
     return IRECT(L-padding, T, R+padding, B);
   }
 
-  inline IRECT GetVPadded(float padding)
+  inline IRECT GetVPadded(float padding) const
   {
     return IRECT(L, T-padding, R, B+padding);
   }
@@ -398,14 +534,16 @@ class StaticStorage
 {
 public:
   
-  unsigned long hash(const char* str)
+  // djb2 hash function (hash * 33 + c) - see http://www.cse.yorku.ca/~oz/hash.html
+    
+  uint32_t hash(const char* str)
   {
-    unsigned long hash = 5381; // TODO: CHECK THIS
+    uint32_t hash = 5381;
     int c;
     
     while ((c = *str++))
     {
-      hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+      hash = ((hash << 5) + hash) + c;
     }
     
     return hash;
@@ -413,29 +551,29 @@ public:
   
   struct DataKey
   {
-    unsigned long id;
-    WDL_String path;
+    // N.B. - hashID is not guaranteed to be unique
+      
+    uint32_t hashID;
+    WDL_String name;
     double scale;
     T* data;
   };
-  
-  WDL_PtrList<DataKey> mDatas;
-  
+    
   T* Find(const char* str, double scale = 1.)
   {
     WDL_String cacheName(str);
     cacheName.AppendFormatted((int) strlen(str) + 6, "-%.1fx", scale);
     
-    unsigned long id = hash(cacheName.Get());
+    uint32_t hashID = hash(cacheName.Get());
     
     int i, n = mDatas.GetSize();
     for (i = 0; i < n; ++i)
     {
       DataKey* key = mDatas.Get(i);
       
-      if (key->id == id) {
+      // Use the hash id for a quick search and then confirm with the scale and identifier to ensure uniqueness
+      if (key->hashID == hashID && scale == key->scale && !strcmp(str, key->name.Get()))
         return key->data;
-      }
     }
     return nullptr;
   }
@@ -447,10 +585,10 @@ public:
     WDL_String cacheName(str);
     cacheName.AppendFormatted((int) strlen(str) + 6, "-%.1fx", scale);
     
-    key->id = hash(cacheName.Get());
+    key->hashID = hash(cacheName.Get());
     key->data = data;
     key->scale = scale;
-    key->path.Set(str);
+    key->name.Set(str);
     
     DBGMSG("adding %s to the static storage at %.1fx the original scale\n", str, scale);
   }
@@ -469,7 +607,7 @@ public:
     }
   }
   
-  ~StaticStorage()
+  void Clear()
   {
     int i, n = mDatas.GetSize();
     for (i = 0; i < n; ++i)
@@ -477,7 +615,16 @@ public:
       delete(mDatas.Get(i)->data);
     }
     mDatas.Empty(true);
+  };
+    
+  ~StaticStorage()
+  {
+    Clear();
   }
+    
+private:
+    
+  WDL_PtrList<DataKey> mDatas;
 };
 
 /**@}*/

@@ -163,7 +163,6 @@ struct IPlugConfig
   bool plugDoesMidi;
   bool plugDoesChunks;
   bool plugIsInstrument;
-  int plugScChans;
   
   IPlugConfig(int nParams,
               int nPresets,
@@ -177,8 +176,7 @@ struct IPlugConfig
               int latency,
               bool plugDoesMidi,
               bool plugDoesChunks,
-              bool plugIsInstrument,
-              int plugScChans)
+              bool plugIsInstrument)
               
   : nParams(nParams)
   , nPresets(nPresets)
@@ -193,15 +191,136 @@ struct IPlugConfig
   , plugDoesMidi(plugDoesMidi)
   , plugDoesChunks(plugDoesChunks)
   , plugIsInstrument(plugIsInstrument)
-  , plugScChans(plugScChans)
   {};
 };
 
-/** Used to store channel i/o count together */
-struct ChannelIO
+/**
+ Used to manage scratch buffers for each channel of I/O, which may involve converting from single to double precision
+ */
+template<class TIN = PLUG_SAMPLE_SRC, class TOUT = PLUG_SAMPLE_DST>
+struct IChannelData
 {
-  int mIn, mOut;
-  ChannelIO(int nIn, int nOut) : mIn(nIn), mOut(nOut) {}
+  bool mConnected = false;
+  TOUT** mData = nullptr; // If this is for an input channel, points into IPlugBase::mInData, if it's for an output channel points into IPlugBase::mOutData
+  TIN* mIncomingData = nullptr;
+  WDL_TypedBuf<TOUT> mScratchBuf;
+  WDL_String mLabel = WDL_String("");
+};
+
+struct IBusInfo
+{
+  ERoute mDirection;
+  int mNChans;
+  WDL_String mLabel;
+  
+  IBusInfo(ERoute direction, int nchans = 0, const char* label = "")
+  : mDirection(direction)
+  , mNChans(nchans)
+  {
+    if(CSTR_NOT_EMPTY(label))
+      mLabel.Set(label);
+    else
+      mLabel.Set(RoutingDirStrs[direction]);
+  }
+};
+
+/** An IOConfig is used to store bus info for each input/output configuration defined in the channel io string */
+struct IOConfig
+{
+  WDL_PtrList<IBusInfo> mInputBusInfo;  // A particular valid io config may have multiple input buses
+  WDL_PtrList<IBusInfo> mOutputBusInfo; // or multiple output busses
+  
+  ~IOConfig()
+  {
+    mInputBusInfo.Empty(true);
+    mOutputBusInfo.Empty(true);
+  }
+  
+  void AddBusInfo(ERoute direction, int NChans, const char* label = "")
+  {
+    if(direction == kInput)
+      mInputBusInfo.Add(new IBusInfo(direction, NChans, label));
+    if(direction == kOutput)
+      mOutputBusInfo.Add(new IBusInfo(direction, NChans, label));
+  }
+  
+  IBusInfo* GetBusInfo(ERoute direction, int index)
+  {
+    if(direction == kInput)
+    {
+      assert(index >= 0 && index < mInputBusInfo.GetSize());
+      return mInputBusInfo.Get(index);
+    }
+    else //(direction == kOutput)
+    {
+      assert(index >= 0 && index < mOutputBusInfo.GetSize());
+      return mOutputBusInfo.Get(index);
+    }
+  }
+  
+  int NChansOnBusSAFE(ERoute direction, int index)
+  {
+    int NChans = 0;
+    if(direction == kInput)
+    {
+      if(index >= 0 && index < mInputBusInfo.GetSize())
+        NChans = mInputBusInfo.Get(index)->mNChans;
+    }
+    else //(direction == kOutput)
+    {
+      if(index >= 0 && index < mOutputBusInfo.GetSize())
+        NChans = mOutputBusInfo.Get(index)->mNChans;
+    }
+    
+    return NChans;
+  }
+  
+  int NBuses(ERoute direction)
+  {
+    if(direction == kInput)
+      return mInputBusInfo.GetSize();
+    else //(direction == kOutput)
+      return mOutputBusInfo.GetSize();
+  }
+  
+  /** Get the total number of channels across all direction buses for this IOConfig */
+  int GetTotalNChannels(ERoute direction) const
+  {
+    int total = 0;
+    
+    if(direction == kInput)
+    {
+      for(int i = 0; i < mInputBusInfo.GetSize(); i++)
+        total += mInputBusInfo.Get(i)->mNChans;
+    }
+    else //(direction == kOutput)
+    {
+      for(int i = 0; i < mOutputBusInfo.GetSize(); i++)
+        total += mOutputBusInfo.Get(i)->mNChans;
+    }
+    return total;
+  }
+  
+  bool ContainsWildcard(ERoute direction)
+  {
+    if(direction == kInput)
+    {
+      for(auto i = 0; i < mInputBusInfo.GetSize(); i++)
+      {
+        if(mInputBusInfo.Get(i)->mNChans < 0)
+          return true;
+      }
+    }
+    else //(direction == kOutput)
+    {
+      for(auto i = 0; i < mOutputBusInfo.GetSize(); i++)
+      {
+        if(mOutputBusInfo.Get(i)->mNChans < 0)
+          return true;
+      }
+    }
+    return false;
+  }
 };
 
 /** Encapsulates information about the host transport state */

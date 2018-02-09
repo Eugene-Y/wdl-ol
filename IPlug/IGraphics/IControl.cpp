@@ -47,14 +47,9 @@ void IControl::SetDirty(bool pushParamToPlug)
     
     if (mValDisplayControl) 
     {
-      WDL_String plusLabel;
-      char str[32];
-      pParam->GetDisplayForHost(str);
-      plusLabel.Set(str, 32);
-      plusLabel.Append(" ", 32);
-      plusLabel.Append(pParam->GetLabelForHost(), 32);
-      
-      ((ITextControl*)mValDisplayControl)->SetTextFromPlug(plusLabel.Get());
+      WDL_String display;
+      pParam->GetDisplayForHost(display);
+      ((ITextControl*)mValDisplayControl)->SetTextFromPlug(display.Get());
     }
     
     if (mNameDisplayControl) 
@@ -116,7 +111,7 @@ void IControl::PromptUserInput()
 {
   if (mParamIdx >= 0 && !mDisablePrompt)
   {
-    if (mPlug.GetParam(mParamIdx)->GetNDisplayTexts()) // popup menu
+    if (mPlug.GetParam(mParamIdx)->NDisplayTexts()) // popup menu
     {
       mPlug.GetGUI()->PromptUserInput(this, mPlug.GetParam(mParamIdx), mRECT);
     }
@@ -233,16 +228,16 @@ void IControl::GetJSON(WDL_String& json, int idx) const
 
 void IPanelControl::Draw(IGraphics& graphics)
 {
-  graphics.FillRect(mColor, mRECT, &mBlend);
+  graphics.FillRect(GetColor(0), mRECT, &mBlend);
 }
 
 void IBitmapControl::Draw(IGraphics& graphics)
 {
   int i = 1;
-  if (mBitmap.N > 1)
+  if (mBitmap.N() > 1)
   {
-    i = 1 + int(0.5 + mValue * (double) (mBitmap.N - 1));
-    i = BOUNDED(i, 1, mBitmap.N);
+    i = 1 + int(0.5 + mValue * (double) (mBitmap.N() - 1));
+    i = BOUNDED(i, 1, mBitmap.N());
   }
   
   graphics.DrawBitmap(mBitmap, mRECT, i, &mBlend);
@@ -277,11 +272,11 @@ void ITextControl::Draw(IGraphics& graphics)
   }
 }
 
-IButtonControlBase::IButtonControlBase(IPlugBaseGraphics& plug, IRECT rect, int paramIdx, std::function<void(IControl*)> actionFunc,
+ISwitchControlBase::ISwitchControlBase(IPlugBaseGraphics& plug, IRECT rect, int paramIdx, std::function<void(IControl*)> actionFunc,
   uint32_t numStates)
   : IControl(plug, rect, paramIdx, actionFunc)
 {
-  if (paramIdx > -1)
+  if (paramIdx > kNoParameter)
     mNumStates = (uint32_t)mPlug.GetParam(paramIdx)->GetRange() + 1;
   else
     mNumStates = numStates;
@@ -289,7 +284,7 @@ IButtonControlBase::IButtonControlBase(IPlugBaseGraphics& plug, IRECT rect, int 
   assert(mNumStates > 1);
 }
 
-void IButtonControlBase::OnMouseDown(float x, float y, const IMouseMod& mod)
+void ISwitchControlBase::OnMouseDown(float x, float y, const IMouseMod& mod)
 {
   if (mNumStates == 2)
     mValue = !mValue;
@@ -351,4 +346,95 @@ void IKnobControlBase::OnMouseWheel(float x, float y, const IMouseMod& mod, floa
   }
 
   SetDirty();
+}
+
+IDirBrowseControlBase::~IDirBrowseControlBase()
+{
+  mFiles.Empty(true);
+  mPaths.Empty(true);
+  mPathLabels.Empty(true);
+}
+
+int IDirBrowseControlBase::NItems()
+{
+  return mFiles.GetSize();
+}
+
+void IDirBrowseControlBase::AddPath(const char * path, const char * label)
+{
+  mPaths.Add(new WDL_String(path));
+  mPathLabels.Add(new WDL_String(label));
+}
+
+void IDirBrowseControlBase::SetUpMenu()
+{
+  mFiles.Empty(true);
+  mMainMenu.Clear();
+  mSelectedIndex = -1;
+
+  int idx = 0;
+
+  if (mPaths.GetSize() == 1)
+  {
+    ScanDirectory(mPaths.Get(0)->Get(), mMainMenu);
+  }
+  else
+  {
+    for (int p = 0; p<mPaths.GetSize(); p++)
+    {
+      IPopupMenu* pNewMenu = new IPopupMenu();
+      mMainMenu.AddItem(mPathLabels.Get(p)->Get(), idx++, pNewMenu);
+      ScanDirectory(mPaths.Get(p)->Get(), *pNewMenu);
+    }
+  }
+}
+
+void IDirBrowseControlBase::GetSelecteItemPath(WDL_String& path)
+{
+  if (mSelectedMenu != nullptr) {
+    path.Append(mPaths.Get(0)->Get()); //TODO: what about multiple paths
+    path.Append(mSelectedMenu->GetItem(mSelectedIndex)->GetText());
+    path.Append(mExtension.Get());
+  }
+  else
+    path.Set("");
+}
+
+void IDirBrowseControlBase::ScanDirectory(const char* path, IPopupMenu& menuToAddTo)
+{
+  WDL_DirScan d;
+  IPopupMenu& parentDirMenu = menuToAddTo;
+
+  if (!d.First(path))
+  {
+    do
+    {
+      const char* f = d.GetCurrentFN();
+      if (f && f[0] != '.')
+      {
+        if (d.GetCurrentIsDirectory())
+        {
+          WDL_String subdir;
+          d.GetCurrentFullFN(&subdir);
+          IPopupMenu* pNewMenu = new IPopupMenu();
+          parentDirMenu.AddItem(d.GetCurrentFN(), pNewMenu);
+          ScanDirectory(subdir.Get(), *pNewMenu);
+        }
+        else
+        {
+          const char* a = strstr(f, mExtension.Get());
+          if (a && a > f && strlen(a) == strlen(mExtension.Get()))
+          {
+            WDL_String menuEntry = WDL_String(f, (int) (a - f));
+            parentDirMenu.AddItem(new IPopupMenu::Item(menuEntry.Get(), IPopupMenu::Item::kNoFlags, mFiles.GetSize()));
+            WDL_String* pFullPath = new WDL_String("");
+            d.GetCurrentFullFN(pFullPath);
+            mFiles.Add(pFullPath);
+          }
+        }
+      }
+    } while (!d.Next());
+
+    menuToAddTo = parentDirMenu;
+  }
 }

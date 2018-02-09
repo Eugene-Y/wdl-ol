@@ -4,6 +4,8 @@
 #include "asio.h"
 #endif
 
+extern void CenterWindow(HWND hwnd);
+
 const int kNumIOVSOptions = 9;
 const int kNumSIGVSOptions = 7;
 
@@ -266,7 +268,7 @@ void PopulatePreferencesDialog(HWND hwndDlg)
   PopulateMidiDialogs(hwndDlg);
 }
 
-#elif defined OS_OSX
+#elif defined OS_MAC
 void PopulatePreferencesDialog(HWND hwndDlg)
 {
   SendDlgItemMessage(hwndDlg,IDC_COMBO_AUDIO_DRIVER,CB_ADDSTRING,0,(LPARAM)"CoreAudio");
@@ -449,7 +451,7 @@ WDL_DLGRET PreferencesDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPa
 
         case IDC_BUTTON_ASIO:
           if (HIWORD(wParam) == BN_CLICKED)
-            #ifdef OS_OSX
+            #ifdef OS_MAC
             system("open \"/Applications/Utilities/Audio MIDI Setup.app\"");
             #elif defined OS_WIN
             if( gState->mAudioDriverType == DAC_ASIO && gDAC->isStreamRunning()) // TODO: still not right
@@ -495,7 +497,7 @@ WDL_DLGRET PreferencesDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lPa
   return TRUE;
 }
 
-#ifdef _WIN32
+#ifdef OS_WIN
 void ClientResize(HWND hWnd, int nWidth, int nHeight)
 {
   RECT rcClient, rcWindow;
@@ -524,13 +526,14 @@ WDL_DLGRET MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
       gHWND=hwndDlg;
 
-#ifdef _WIN32
+#ifdef OS_WIN
       if(!AttachGUI()) printf("couldn't attach gui\n");
       ClientResize(hwndDlg, gPluginInstance->GetUIWidth(), gPluginInstance->GetUIHeight());
       //SendMessage(hwndDlg, WM_SETICON, ICON_SMALL, (LPARAM)LoadIcon(NULL, MAKEINTRESOURCE(IDI_ICON1)));
       //SendMessage(hwndDlg, WM_SETICON, ICON_BIG, (LPARAM)LoadIcon(NULL, MAKEINTRESOURCE(IDI_ICON1)));
 
 #else // OSX
+//      ClientResize(hwndDlg, gPluginInstance->GetUIWidth(), gPluginInstance->GetUIHeight());
       CenterWindow(hwndDlg);
 #endif
 
@@ -539,7 +542,7 @@ WDL_DLGRET MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
     case WM_DESTROY:
       gHWND=NULL;
 
-#ifdef _WIN32
+#ifdef OS_WIN
       PostQuitMessage(0);
 #else
       SWELL_PostQuitMessage(hwndDlg);

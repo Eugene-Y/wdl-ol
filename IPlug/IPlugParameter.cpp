@@ -63,13 +63,13 @@ void IParam::SetShape(double shape)
     mShape = shape;
 }
 
-void IParam::SetDisplayText(int value, const char* text)
+void IParam::SetDisplayText(double value, const char* str)
 {
   int n = mDisplayTexts.GetSize();
   mDisplayTexts.Resize(n + 1);
   DisplayText* pDT = mDisplayTexts.Get() + n;
   pDT->mValue = value;
-  strcpy(pDT->mText, text);
+  strcpy(pDT->mText, str);
 }
 
 double IParam::DBToAmp() const
@@ -83,7 +83,7 @@ void IParam::SetNormalized(double normalizedValue)
   
   if (mType != kTypeDouble)
   {
-    mValue = floor(0.5 + mValue / mStep) * mStep;
+    mValue = round(mValue / mStep) * mStep;
   }
   
   mValue = std::min(mValue, mMax);
@@ -105,38 +105,43 @@ double IParam::GetNonNormalized(double normalizedValue) const
   return FromNormalizedParam(normalizedValue, mMin, mMax, mShape, mShapeSymmetry);
 }
 
-void IParam::GetDisplayForHost(double value, bool normalized, char* rDisplay, bool withDisplayText)
+void IParam::GetDisplayForHost(double value, bool normalized, WDL_String& str, bool withDisplayText)
 {
   if (normalized) value = FromNormalizedParam(value, mMin, mMax, mShape, mShapeSymmetry);
 
   if (withDisplayText)
   {
-    const char* displayText = GetDisplayText( (int) value);
+    const char* displayText = GetDisplayText((int) value);
 
     if (CSTR_NOT_EMPTY(displayText))
     {
-      strcpy(rDisplay, displayText);
+      str.Set(displayText, MAX_PARAM_DISPLAY_LEN);
       return;
     }
   }
 
   double displayValue = value;
 
-  if (mNegateDisplay) displayValue = -displayValue;
+  if (mNegateDisplay)
+    displayValue = -displayValue;
+
+  // Squash all zeros to positive
+  
+  if (!displayValue) displayValue = 0.0;
 
   if (mDisplayPrecision == 0)
   {
-    sprintf(rDisplay, "%d", int(displayValue));
+    str.SetFormatted(MAX_PARAM_DISPLAY_LEN, "%d", int(round(displayValue)));
   }
-//   else if(mSignDisplay)
-//   {
-//     char fmt[16];
-//     sprintf(fmt, "%%+.%df", mDisplayPrecision);
-//     sprintf(rDisplay, fmt, displayValue);
-//   }
+  else if (mSignDisplay && displayValue)
+  {
+    char fmt[16];
+    sprintf(fmt, "%%+.%df", mDisplayPrecision);
+    str.SetFormatted(MAX_PARAM_DISPLAY_LEN, fmt, displayValue);
+  }
   else
   {
-    sprintf(rDisplay, "%.*f", mDisplayPrecision, displayValue);
+    str.SetFormatted(MAX_PARAM_DISPLAY_LEN, "%.*f", mDisplayPrecision, displayValue);
   }
 }
 
@@ -156,7 +161,7 @@ const char* IParam::GetParamGroupForHost() const
   return mParamGroup;
 }
 
-int IParam::GetNDisplayTexts() const
+int IParam::NDisplayTexts() const
 {
   return mDisplayTexts.GetSize();
 }
@@ -178,7 +183,7 @@ const char* IParam::GetDisplayText(int value) const
   return "";
 }
 
-const char* IParam::GetDisplayTextAtIdx(int idx, int* pValue) const
+const char* IParam::GetDisplayTextAtIdx(int idx, double* pValue) const
 {
   DisplayText* pDT = mDisplayTexts.Get()+idx;
   
@@ -189,7 +194,7 @@ const char* IParam::GetDisplayTextAtIdx(int idx, int* pValue) const
   return pDT->mText;
 }
 
-bool IParam::MapDisplayText(const char* str, int* pValue) const
+bool IParam::MapDisplayText(const char* str, double* pValue) const
 {
   int n = mDisplayTexts.GetSize();
   
@@ -206,6 +211,27 @@ bool IParam::MapDisplayText(const char* str, int* pValue) const
     }
   }
   return false;
+}
+
+double IParam::StringToValue(const char* str)
+{
+  double v = 0.;
+  bool mapped = (bool) NDisplayTexts();
+  
+  if (mapped)
+    mapped = MapDisplayText(str, &v);
+  
+  if (!mapped && Type() != kTypeEnum && Type() != kTypeBool)
+  {
+    v = atof(str);
+    
+    if (GetDisplayIsNegated())
+      v = -v;
+    
+    v = Clamp(v);
+  }
+  
+  return v;
 }
 
 void IParam::GetBounds(double& lo, double& hi) const

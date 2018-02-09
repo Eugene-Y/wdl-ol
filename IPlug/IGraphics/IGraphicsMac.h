@@ -1,26 +1,25 @@
 #pragma once
 
-//TODO: would be nice not to put this here
 #ifndef NO_IGRAPHICS
-  #ifdef IGRAPHICS_AGG
-    #include "IGraphicsAGG.h"
-    typedef IGraphicsAGG IGRAPHICS_DRAW_CLASS;
-  #elif defined IGRAPHICS_CAIRO
-    #include "IGraphicsCairo.h"
-    typedef IGraphicsCairo IGRAPHICS_DRAW_CLASS;
-  #elif defined IGRAPHICS_NANOVG
-    #include "IGraphicsNanoVG.h"
-    typedef IGraphicsNanoVG IGRAPHICS_DRAW_CLASS;
-  #else
-    #include "IGraphicsLice.h"
-    typedef IGraphicsLice IGRAPHICS_DRAW_CLASS;
-  #endif
+
+#ifdef IGRAPHICS_AGG
+  #include "IGraphicsAGG.h"
+  typedef IGraphicsAGG IGRAPHICS_DRAW_CLASS;
+#elif defined IGRAPHICS_CAIRO
+  #include "IGraphicsCairo.h"
+  typedef IGraphicsCairo IGRAPHICS_DRAW_CLASS;
+#elif defined IGRAPHICS_NANOVG
+  #include "IGraphicsNanoVG.h"
+  typedef IGraphicsNanoVG IGRAPHICS_DRAW_CLASS;
+#else
+  #include "IGraphicsLice.h"
+  typedef IGraphicsLice IGRAPHICS_DRAW_CLASS;
 #endif
 
 /** IGraphics platform class for macOS  
 *   @ingroup PlatformClasses
 */
-class IGraphicsMac : public IGRAPHICS_DRAW_CLASS
+class IGraphicsMac final : public IGRAPHICS_DRAW_CLASS
 {
 public:
   IGraphicsMac(IPlugBaseGraphics& plug, int w, int h, int fps);
@@ -28,6 +27,8 @@ public:
 
   void SetBundleID(const char* bundleID) { mBundleID.Set(bundleID); }
   void CreateMetalLayer();
+  
+  bool IsSandboxed();
     
   void* OpenWindow(void* pWindow) override;
   void CloseWindow() override;
@@ -39,7 +40,6 @@ public:
   void HideMouseCursor() override;
   void ShowMouseCursor() override;
  
-
   int ShowMessageBox(const char* str, const char* caption, int type) override;
   void ForceEndUserEdit() override;
 
@@ -50,6 +50,7 @@ public:
   void HostPath(WDL_String& path) override;
   void PluginPath(WDL_String& path) override;
   void DesktopPath(WDL_String& path) override;
+  void UserHomePath(WDL_String& path) override;
   void AppSupportPath(WDL_String& path, bool isSystem) override;
   void SandboxSafeAppSupportPath(WDL_String& path) override;
   void VST3PresetsPath(WDL_String& path, bool isSystem) override;
@@ -91,3 +92,5 @@ inline int AdjustFontSize(int size) //TODO: sort this out
 {
   return int(0.9 * (double)size);
 }
+
+#endif // NO_IGRAPHICS

@@ -26,11 +26,10 @@ public:
    * @param value Value to be set. Will be clamped between \c mMin and \c mMax
    */
   void Set(double value) { mValue = BOUNDED(value, mMin, mMax); }
-  void SetDisplayText(int value, const char* text);
+  void SetDisplayText(double value, const char* text);
   void SetCanAutomate(bool canAutomate) { mCanAutomate = canAutomate; }
   // The higher the shape, the more resolution around host value zero.
   void SetShape(double shape);
-  void SetShapeSymmetry(bool symmetric) { mShapeSymmetry = symmetric; }
   void SetIsMeta(bool meta) { mIsMeta = meta; }
   void SetToDefault() { mValue = mDefault; }
 
@@ -56,28 +55,31 @@ public:
    */
   int Int() const { return int(mValue); }
   double DBToAmp() const;
-
+  double Clamp(double value) const { return BOUNDED(value, mMin, mMax); }
+    
   void SetNormalized(double normalizedValue);
   double GetNormalized() const;
   double GetNormalized(double nonNormalizedValue) const;
   double GetNonNormalized(double normalizedValue) const;
 
-  void GetDisplayForHost(char* rDisplay) { GetDisplayForHost(mValue, false, rDisplay); }
-  void GetDisplayForHostNoDisplayText(char* rDisplay) { GetDisplayForHost(mValue, false, rDisplay, false); }
-  void GetDisplayForHost(double value, bool normalized, char* rDisplay, bool withDisplayText = true);
+  void GetDisplayForHost(WDL_String& display, bool withDisplayText = true) { GetDisplayForHost(mValue, false, display, withDisplayText); }
+  void GetDisplayForHost(double value, bool normalized, WDL_String& display, bool withDisplayText = true);
+  
+  double StringToValue(const char* ptr);
+  
   const char* GetNameForHost() const;
   const char* GetLabelForHost() const;
   const char* GetParamGroupForHost() const;
-
-  int GetNDisplayTexts() const;
+  
+  int NDisplayTexts() const;
   const char* GetDisplayText(int value) const;
-  const char* GetDisplayTextAtIdx(int idx, int* value = 0) const;
-  bool MapDisplayText(const char* pStr, int* pValue) const;  // Reverse map back to value.
-
+  const char* GetDisplayTextAtIdx(int idx, double* pValue = nullptr) const;
+  bool MapDisplayText(const char* pStr, double* pValue) const;  // Reverse map back to value.
+  
   double GetShape() const { return mShape; }
   double GetStep() const { return mStep; }
   double GetDefault() const { return mDefault; }
-  double GetDefaultNormalized() const { return ToNormalizedParam(mDefault, mMin, mMax, mShape, mShapeSymmetry); }
+  double GetDefaultNormalized() const { return ToNormalizedParam(mDefault, mMin, mMax, mShape); }
   double GetMin() const { return mMin; }
   double GetMax() const { return mMax; }
   void GetBounds(double& lo, double& hi) const;
@@ -85,7 +87,7 @@ public:
   int GetPrecision() const {return mDisplayPrecision;}
   bool GetCanAutomate() const { return mCanAutomate; }
   bool GetIsMeta() const { return mIsMeta; }
-
+  
   void GetJSON(WDL_String& json, int idx) const;
 
 private:
@@ -101,16 +103,15 @@ private:
   bool mSignDisplay = false;
   bool mCanAutomate = true;
   bool mIsMeta = false;
-  bool mShapeSymmetry = false; // todo check what's with AAX_ITaperDelegate and IPlugVST3::process()
   char mName[MAX_PARAM_NAME_LEN];
   char mLabel[MAX_PARAM_LABEL_LEN];
-  char mParamGroup[MAX_PARAM_LABEL_LEN];
-
+  char mParamGroup[MAX_PARAM_GROUP_LEN];
+  
   struct DisplayText
   {
-    int mValue;
+    double mValue;
     char mText[MAX_PARAM_DISPLAY_LEN];
   };
-
+  
   WDL_TypedBuf<DisplayText> mDisplayTexts;
 } WDL_FIXALIGN;

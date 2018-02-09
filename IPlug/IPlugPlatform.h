@@ -10,7 +10,7 @@
 #elif defined __APPLE__
   #include <TargetConditionals.h>
   #if TARGET_OS_MAC
-    #define OS_OSX
+    #define OS_MAC
   #endif
 #elif defined __linux || defined __linux__ || defined linux
   #define OS_LINUX
@@ -26,3 +26,14 @@
 
 #include "IPlugLogger.h"
 
+#ifdef NO_PARAMS_MUTEX
+#define LOCK_PARAMS_MUTEX
+#define LOCK_PARAMS_MUTEX_STATIC
+#define ENTER_PARAMS_MUTEX
+#define LEAVE_PARAMS_MUTEX
+#else
+#define LOCK_PARAMS_MUTEX WDL_MutexLock lock(&mParams_mutex); Trace(TRACELOC, "%s","SCOPED_LOCK_PARAMS_MUTEX")
+#define LOCK_PARAMS_MUTEX_STATIC WDL_MutexLock lock(&_this->mParams_mutex); Trace(TRACELOC, "%s", "SCOPED_LOCK_PARAMS_MUTEX")
+#define ENTER_PARAMS_MUTEX mParams_mutex.Enter(); Trace(TRACELOC, "%s", "ENTER_PARAMS_MUTEX")
+#define LEAVE_PARAMS_MUTEX mParams_mutex.Leave(); Trace(TRACELOC, "%s", "LEAVE_PARAMS_MUTEX")
+#endif

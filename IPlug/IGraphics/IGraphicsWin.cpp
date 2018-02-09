@@ -1,5 +1,6 @@
 
 #include <Shlobj.h>
+#include <Shlwapi.h>
 #include <commctrl.h>
 
 #include "IGraphicsWin.h"
@@ -16,6 +17,46 @@ static double sFPS = 0.0;
 
 #define PARAM_EDIT_ID 99
 #define IPLUG_TIMER_ID 2
+#define IPLUG_WIN_MAX_WIDE_PATH 4096
+
+// Unicode helpers
+
+
+void UTF8ToUTF16(wchar_t* utf16Str, const char* utf8Str, int maxLen)
+{
+  int requiredSize = MultiByteToWideChar(CP_UTF8, 0, utf8Str, -1, NULL, 0);
+
+  if (requiredSize > 0 && requiredSize <= maxLen)
+  {
+    MultiByteToWideChar(CP_UTF8, 0, utf8Str, -1, utf16Str, requiredSize);
+    return;
+  }
+
+  utf16Str[0] = 0;
+}
+
+void UTF16ToUTF8(WDL_String& utf8Str, const wchar_t* utf16Str)
+{
+  int requiredSize = WideCharToMultiByte(CP_UTF8, 0, utf16Str, -1, NULL, 0, NULL, NULL);
+
+  if (requiredSize > 0 && utf8Str.SetLen(requiredSize))
+  {
+    WideCharToMultiByte(CP_UTF8, 0, utf16Str, -1, utf8Str.Get(), requiredSize, NULL, NULL);
+    return;
+  }
+
+  utf8Str.Set("");
+}
+
+// Helper for getting a known folder in UTF8
+
+void GetKnownFolder(WDL_String &path, int identifier, int flags = 0)
+{
+  wchar_t wideBuffer[1024];
+
+  SHGetFolderPathW(NULL, identifier, NULL, flags, wideBuffer);
+  UTF16ToUTF8(path, wideBuffer);
+}
 
 inline IMouseInfo IGraphicsWin::GetMouseInfo(LPARAM lParam, WPARAM wParam)
 {
@@ -23,14 +64,14 @@ inline IMouseInfo IGraphicsWin::GetMouseInfo(LPARAM lParam, WPARAM wParam)
   info.x = mMouseX = GET_X_LPARAM(lParam) / GetScale();
   info.y = mMouseY = GET_Y_LPARAM(lParam) / GetScale();
   info.ms = IMouseMod((wParam & MK_LBUTTON),
-	  (wParam & MK_RBUTTON),
-	  (wParam & MK_SHIFT),
-	  (wParam & MK_CONTROL),
+    (wParam & MK_RBUTTON),
+    (wParam & MK_SHIFT),
+    (wParam & MK_CONTROL),
 
 #ifdef AAX_API
-	  GetAsyncKeyState(VK_MENU) < 0
+    GetAsyncKeyState(VK_MENU) < 0
 #else
-	  GetKeyState(VK_MENU) < 0
+    GetKeyState(VK_MENU) < 0
 #endif
       );
   return info;
@@ -64,7 +105,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
   }
 
   IGraphicsWin* pGraphics = (IGraphicsWin*) GetWindowLongPtr(hWnd, GWLP_USERDATA);
-  char txt[MAX_PARAM_LEN];
+  char txt[MAX_WIN32_PARAM_LEN];
   double v;
 
   if (!pGraphics || hWnd != pGraphics->mPlugWnd)
@@ -94,7 +135,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
           {
             case kCommit:
             {
-              SendMessage(pGraphics->mParamEditWnd, WM_GETTEXT, MAX_PARAM_LEN, (LPARAM) txt);
+              SendMessage(pGraphics->mParamEditWnd, WM_GETTEXT, MAX_WIN32_PARAM_LEN, (LPARAM) txt);
 
               if(pGraphics->mEdParam)
               {
@@ -102,7 +143,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
                 if ( type == IParam::kTypeEnum || type == IParam::kTypeBool)
                 {
-                  int vi = 0;
+                  double vi = 0.;
                   pGraphics->mEdParam->MapDisplayText(txt, &vi);
                   v = (double) vi;
                 }
@@ -118,7 +159,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
               }
               else
               {
-                pGraphics->mEdControl->TextFromTextEntry(txt);
+                pGraphics->mEdControl->OnTextEntryCompletion(txt);
               }
               // Fall through.
             }
@@ -166,7 +207,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     case WM_RBUTTONDOWN:
     case WM_LBUTTONDOWN:
     case WM_MBUTTONDOWN:
-	{
+  {
       pGraphics->HideTooltip();
       if (pGraphics->mParamEditWnd)
       {
@@ -185,7 +226,7 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
       if (!(wParam & (MK_LBUTTON | MK_RBUTTON)))
       {
         IMouseInfo info = pGraphics->GetMouseInfo(lParam, wParam);
-		if (pGraphics->OnMouseOver(info.x, info.y, info.ms))
+    if (pGraphics->OnMouseOver(info.x, info.y, info.ms))
         {
           TRACKMOUSEEVENT eventTrack = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, hWnd, HOVER_DEFAULT };
           if (pGraphics->TooltipsEnabled()) 
@@ -734,7 +775,7 @@ void IGraphicsWin::CloseWindow()
 IPopupMenu* IGraphicsWin::GetItemMenu(long idx, long &idxInMenu, long &offsetIdx, IPopupMenu& baseMenu)
 {
   long oldIDx = offsetIdx;
-  offsetIdx += baseMenu.GetNItems();
+  offsetIdx += baseMenu.NItems();
 
   if (idx < offsetIdx)
   {
@@ -744,9 +785,9 @@ IPopupMenu* IGraphicsWin::GetItemMenu(long idx, long &idxInMenu, long &offsetIdx
 
   IPopupMenu* menu = 0;
 
-  for(int i = 0; i< baseMenu.GetNItems(); i++)
+  for(int i = 0; i< baseMenu.NItems(); i++)
   {
-    IPopupMenuItem* menuItem = baseMenu.GetItem(i);
+    IPopupMenu::Item* menuItem = baseMenu.GetItem(i);
     if(menuItem->GetSubmenu())
     {
       menu = GetItemMenu(idx, idxInMenu, offsetIdx, *menuItem->GetSubmenu());
@@ -763,20 +804,21 @@ HMENU IGraphicsWin::CreateMenu(IPopupMenu& menu, long* offsetIdx)
 {
   HMENU hMenu = CreatePopupMenu();
 
+  WDL_String escapedText;
+
   int flags = 0;
-  long idxSubmenu = 0;
   long offset = *offsetIdx;
-  long nItems = menu.GetNItems();
+  long nItems = menu.NItems();
   *offsetIdx += nItems;
   long inc = 0;
 
   for(int i = 0; i< nItems; i++)
   {
-    IPopupMenuItem* menuItem = menu.GetItem(i);
+    IPopupMenu::Item* menuItem = menu.GetItem(i);
 
     if (menuItem->GetIsSeparator())
     {
-      AppendMenu (hMenu, MF_SEPARATOR, 0, 0);
+      AppendMenu(hMenu, MF_SEPARATOR, 0, 0);
     }
     else
     {
@@ -804,7 +846,20 @@ HMENU IGraphicsWin::CreateMenu(IPopupMenu& menu, long* offsetIdx)
         }
       }
 
-      const char* entryText (titleWithPrefixNumbers ? titleWithPrefixNumbers : str);
+      const char* entryText(titleWithPrefixNumbers ? titleWithPrefixNumbers : str);
+
+      // Escape ampersands if present
+
+      if (strchr(entryText, '&'))
+      {
+        escapedText = WDL_String(entryText);
+
+        for (int c = 0; c < escapedText.GetLength(); c++)
+          if (escapedText.Get()[c] == '&')
+            escapedText.Insert("&", c++);
+
+         entryText = escapedText.Get();
+      }
 
       flags = MF_STRING;
       //if (nItems < 160 && pMenu->getNbItemsPerColumn () > 0 && inc && !(inc % _menu->getNbItemsPerColumn ()))
@@ -860,13 +915,7 @@ IPopupMenu* IGraphicsWin::CreateIPopupMenu(IPopupMenu& menu, IRECT& areaRect)
 
     ClientToScreen(mPlugWnd, &cPos);
 
-    if (TrackPopupMenu(hMenu,
-                       TPM_LEFTALIGN,
-                       cPos.x,
-                       cPos.y,
-                       0,
-                       mPlugWnd,
-                       0))
+    if (TrackPopupMenu(hMenu, TPM_LEFTALIGN, cPos.x, cPos.y, 0, mPlugWnd, 0))
     {
       MSG msg;
       if (PeekMessage(&msg, mPlugWnd, WM_COMMAND, WM_COMMAND, PM_REMOVE))
@@ -934,9 +983,9 @@ void IGraphicsWin::CreateTextEntry(IControl* pControl, const IText& text, const 
 void GetModulePath(HMODULE hModule, WDL_String& path)
 {
   path.Set("");
-  char pathCStr[MAX_PATH_LEN];
+  char pathCStr[MAX_WIN32_PATH_LEN];
   pathCStr[0] = '\0';
-  if (GetModuleFileName(hModule, pathCStr, MAX_PATH_LEN))
+  if (GetModuleFileName(hModule, pathCStr, MAX_WIN32_PATH_LEN))
   {
     int s = -1;
     for (int i = 0; i < strlen(pathCStr); ++i)
@@ -965,40 +1014,31 @@ void IGraphicsWin::PluginPath(WDL_String& path)
 
 void IGraphicsWin::DesktopPath(WDL_String& path)
 {
-  TCHAR strPath[MAX_PATH_LEN];
-  SHGetSpecialFolderPath( 0, strPath, CSIDL_DESKTOP, FALSE );
-  path.Set(strPath, MAX_PATH_LEN);
+  GetKnownFolder(path, CSIDL_DESKTOP);
+}
+
+void IGraphicsWin::UserHomePath(WDL_String & path)
+{
+  GetKnownFolder(path, CSIDL_PROFILE);
 }
 
 void IGraphicsWin::AppSupportPath(WDL_String& path, bool isSystem)
 {
-  TCHAR strPath[MAX_PATH_LEN];
-
-  if (isSystem)
-    SHGetFolderPathA(NULL, CSIDL_COMMON_APPDATA, NULL, 0, strPath);
-  else
-    SHGetFolderPathA(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, strPath);
-
-  path.Set(strPath, MAX_PATH_LEN);
+  GetKnownFolder(path, isSystem ? CSIDL_COMMON_APPDATA : CSIDL_LOCAL_APPDATA);
 }
 
 void IGraphicsWin::VST3PresetsPath(WDL_String& path, bool isSystem)
 {
-  TCHAR strPath[MAX_PATH_LEN];
-
   if (!isSystem)
   {
-    TCHAR strPath[MAX_PATH_LEN];
-    SHGetFolderPathA(NULL, CSIDL_PERSONAL, NULL, SHGFP_TYPE_CURRENT, strPath);
-    path.Set(strPath, MAX_PATH_LEN);
+    GetKnownFolder(path, CSIDL_PERSONAL, SHGFP_TYPE_CURRENT);
   }
   else
   {
-    SHGetFolderPathA(NULL, CSIDL_COMMON_APPDATA, NULL, 0, strPath);
-    path.Set(strPath, MAX_PATH_LEN);
+    AppSupportPath(path, true);
   }
 
-  path.AppendFormatted(MAX_PATH_LEN, "\\VST3 Presets\\%s\\%s", mPlug.GetMfrName(), mPlug.GetProductName());
+  path.AppendFormatted(MAX_WIN32_PATH_LEN, "\\VST3 Presets\\%s\\%s", mPlug.GetMfrName(), mPlug.GetProductName());
 }
 
 bool IGraphicsWin::RevealPathInExplorerOrFinder(WDL_String& path, bool select)
@@ -1007,8 +1047,9 @@ bool IGraphicsWin::RevealPathInExplorerOrFinder(WDL_String& path, bool select)
   
   if (path.GetLength())
   {
-    TCHAR winDir[MAX_PATH];
-    UINT len = GetSystemDirectory(winDir, MAX_PATH);
+    WCHAR winDir[IPLUG_WIN_MAX_WIDE_PATH];
+  WCHAR explorerWide[IPLUG_WIN_MAX_WIDE_PATH];
+    UINT len = GetSystemDirectoryW(winDir, IPLUG_WIN_MAX_WIDE_PATH);
     
     if (len || !(len > MAX_PATH - 2))
     {
@@ -1024,9 +1065,10 @@ bool IGraphicsWin::RevealPathInExplorerOrFinder(WDL_String& path, bool select)
       explorerParams.Append(path.Get());
       explorerParams.Append("\\\"");
       
+    UTF8ToUTF16(explorerWide, explorerParams.Get(), IPLUG_WIN_MAX_WIDE_PATH);
       HINSTANCE result;
       
-      if ((result=::ShellExecute(NULL, "open", "explorer.exe", (const TCHAR*)explorerParams.Get(), winDir, SW_SHOWNORMAL)) <= (HINSTANCE) 32)
+      if ((result=::ShellExecuteW(NULL, L"open", L"explorer.exe", explorerWide, winDir, SW_SHOWNORMAL)) <= (HINSTANCE) 32)
         success = true;
     }
   }
@@ -1042,101 +1084,100 @@ void IGraphicsWin::PromptForFile(WDL_String& filename, WDL_String& path, EFileAc
     filename.Set("");
     return;
   }
-
-  char fnCStr[MAX_PATH_LEN];
-  char dirCStr[MAX_PATH_LEN];
-
+    
+  wchar_t fnCStr[_MAX_PATH];
+  wchar_t dirCStr[_MAX_PATH];
+    
   if (filename.GetLength())
-    strcpy(fnCStr, filename.Get());
+    UTF8ToUTF16(fnCStr, filename.Get(), _MAX_PATH);
   else
     fnCStr[0] = '\0';
-
+    
   dirCStr[0] = '\0';
-
+    
   if (!path.GetLength())
-  {
     DesktopPath(path);
-  }
-
-  strcpy(dirCStr, path.Get());
-
-  OPENFILENAME ofn;
-  memset(&ofn, 0, sizeof(OPENFILENAME));
-
-  ofn.lStructSize = sizeof(OPENFILENAME);
-  ofn.hwndOwner = mPlugWnd;
+    
+  UTF8ToUTF16(dirCStr, path.Get(), _MAX_PATH);
+    
+  OPENFILENAMEW ofn;
+  memset(&ofn, 0, sizeof(OPENFILENAMEW));
+    
+  ofn.lStructSize = sizeof(OPENFILENAMEW);
+  ofn.hwndOwner = (HWND) GetWindow();
   ofn.lpstrFile = fnCStr;
-  ofn.nMaxFile = MAX_PATH_LEN - 1;
+  ofn.nMaxFile = _MAX_PATH - 1;
   ofn.lpstrInitialDir = dirCStr;
   ofn.Flags = OFN_PATHMUSTEXIST;
-
+    
   if (CSTR_NOT_EMPTY(extensions))
   {
-    char extStr[256];
-    char defExtStr[16];
+    wchar_t extStr[256];
+    wchar_t defExtStr[16];
     int i, p, n = strlen(extensions);
     bool seperator = true;
-
+        
     for (i = 0, p = 0; i < n; ++i)
     {
       if (seperator)
       {
         if (p)
-        {
           extStr[p++] = ';';
-        }
+                
         seperator = false;
         extStr[p++] = '*';
         extStr[p++] = '.';
       }
 
       if (extensions[i] == ' ')
-      {
         seperator = true;
-      }
       else
-      {
         extStr[p++] = extensions[i];
-      }
     }
     extStr[p++] = '\0';
-
-    strcpy(&extStr[p], extStr);
+        
+    wcscpy(&extStr[p], extStr);
     extStr[p + p] = '\0';
     ofn.lpstrFilter = extStr;
-
+        
     for (i = 0, p = 0; i < n && extensions[i] != ' '; ++i)
-    {
       defExtStr[p++] = extensions[i];
-    }
-
+    
     defExtStr[p++] = '\0';
     ofn.lpstrDefExt = defExtStr;
   }
-
+    
   bool rc = false;
+    
   switch (action)
   {
     case kFileSave:
       ofn.Flags |= OFN_OVERWRITEPROMPT;
-      rc = GetSaveFileName(&ofn);
+      rc = GetSaveFileNameW(&ofn);
       break;
-
+            
     case kFileOpen:
-    default:
+      default:
       ofn.Flags |= OFN_FILEMUSTEXIST;
-      rc = GetOpenFileName(&ofn);
+      rc = GetOpenFileNameW(&ofn);
       break;
   }
-
+    
   if (rc)
   {
     char drive[_MAX_DRIVE];
-    if(_splitpath_s(ofn.lpstrFile, drive, sizeof(drive), dirCStr, sizeof(dirCStr), NULL, 0, NULL, 0) == 0)
+    char directoryOutCStr[_MAX_PATH];
+    
+    WDL_String tempUTF8;
+    UTF16ToUTF8(tempUTF8, ofn.lpstrFile);
+    
+    if (_splitpath_s(tempUTF8.Get(), drive, sizeof(drive), directoryOutCStr, sizeof(directoryOutCStr), NULL, 0, NULL, 0) == 0)
     {
-      path.SetFormatted(MAX_PATH_LEN, "%s%s", drive, dirCStr);
+      path.Set(drive);
+      path.Append(directoryOutCStr);
     }
-    filename.Set(ofn.lpstrFile);
+      
+    filename.Set(tempUTF8.Get());
   }
   else
   {
@@ -1197,7 +1238,9 @@ bool IGraphicsWin::OpenURL(const char* url, const char* msgWindowTitle, const ch
   DWORD inetStatus = 0;
   if (InternetGetConnectedState(&inetStatus, 0))
   {
-    if ((int) ShellExecute(mPlugWnd, "open", url, 0, 0, SW_SHOWNORMAL) > MAX_INET_ERR_CODE)
+  WCHAR urlWide[IPLUG_WIN_MAX_WIDE_PATH];
+  UTF8ToUTF16(urlWide, url, IPLUG_WIN_MAX_WIDE_PATH);
+    if ((int) ShellExecuteW(mPlugWnd, L"open", urlWide, 0, 0, SW_SHOWNORMAL) > MAX_INET_ERR_CODE)
     {
       return true;
     }
@@ -1314,7 +1357,7 @@ BOOL IGraphicsWin::EnumResNameProc(HANDLE module, LPCTSTR type, LPTSTR name, LON
       WDL_String strippedName(strlwr(name+1)); 
       strippedName.SetLen(strippedName.GetLength() - 1);
 
-      if (strcmp(search->Get(), strippedName.Get()) == 0) // if we are looking for a resource with this name
+      if (strcmp(strlwr(search->Get()), strippedName.Get()) == 0) // if we are looking for a resource with this name
       {
         search->SetFormatted(strippedName.GetLength() + 7, "found: %s", strippedName.Get());
         return false;
@@ -1327,22 +1370,27 @@ BOOL IGraphicsWin::EnumResNameProc(HANDLE module, LPCTSTR type, LPTSTR name, LON
 
 bool IGraphicsWin::OSFindResource(const char* name, const char* type, WDL_String& result)
 {
-  WDL_String search(name);
-  WDL_String typeUpper(type);
-  
-  EnumResourceNames(mHInstance, _strupr(typeUpper.Get()), (ENUMRESNAMEPROC)EnumResNameProc, (LONG_PTR) &search);
-    
-  if (strstr(search.Get(), "found: ") != 0)
+  if (CSTR_NOT_EMPTY(name))
   {
-    result.SetFormatted(MAX_PATH, "\"%s\"", search.Get() + 7, search.GetLength() - 7); // 7 = strlen("found: ")
-    return true;
-  }
-  else
-  {
-    //TODO: search some other path - for instance if the plug-in developer wishes to store graphics resources in Program Files, to reduce the size of plug-in binaries
-    return false;
-  }
+    WDL_String search(name);
+    WDL_String typeUpper(type);
 
+    EnumResourceNames(mHInstance, _strupr(typeUpper.Get()), (ENUMRESNAMEPROC)EnumResNameProc, (LONG_PTR)&search);
+
+    if (strstr(search.Get(), "found: ") != 0)
+    {
+      result.SetFormatted(MAX_PATH, "\"%s\"", search.Get() + 7, search.GetLength() - 7); // 7 = strlen("found: ")
+      return true;
+    }
+    else
+    {
+      if (PathFileExists(name))
+      {
+        result.Set(name);
+        return true;
+      }
+    }
+  }
   return false;
 }
 

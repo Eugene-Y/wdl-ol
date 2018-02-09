@@ -66,7 +66,7 @@ public:
   /** Called by default when the user right clicks a control. If IGRAPHICS_NO_CONTEXT_MENU is enabled as a preprocessor macro right clicking control will mean IControl::CreateContextMenu() and IControl::OnContextSelection() do not function on right clicking control. VST3 provides contextual menu support which is hard wired to right click controls by default. You can add custom items to the menu by implementing IControl::CreateContextMenu() and handle them in IControl::OnContextSelection(). In non-VST 3 hosts right clicking will still create the menu, but it will not feature entries added by the host. */
   virtual void CreateContextMenu(IPopupMenu& contextMenu) {}
   
-  virtual void TextFromTextEntry( const char* txt ) {}
+  virtual void OnTextEntryCompletion( const char* txt ) {}
   
   /** Called in response to a menu selection from CreateContextMenu(); /see CreateContextMenu() */
   virtual void OnContextSelection(int itemSelected) {}
@@ -94,7 +94,7 @@ public:
 
   /** @return Parameter index */
   int ParamIdx() { return mParamIdx; }
-  IParam* GetParam() { return mPlug.GetParam(mParamIdx); }
+  IParam* GetParam() { return (mParamIdx >= 0) ? mPlug.GetParam(mParamIdx) : nullptr; }
   virtual void SetValueFromPlug(double value);
   virtual void SetValueFromUserInput(double value);
   /** @return Value of the control */
@@ -124,16 +124,16 @@ public:
   /** @return \c True if the control is grayed */
   bool IsGrayed() const { return mGrayed; }
 
-  void SetMOWhenGrayed(bool allow) { mMOWhenGreyed = allow; }
-  void SetMEWhenGrayed(bool allow) { mMEWhenGreyed = allow; }
-  bool GetMOWhenGrayed() { return mMOWhenGreyed; }
-  bool GetMEWhenGrayed() { return mMEWhenGreyed; }
+  void SetMOWhenGrayed(bool allow) { mMOWhenGrayed = allow; }
+  void SetMEWhenGrayed(bool allow) { mMEWhenGrayed = allow; }
+  bool GetMOWhenGrayed() { return mMOWhenGrayed; }
+  bool GetMEWhenGrayed() { return mMEWhenGrayed; }
 
   // Override if you want the control to be hit only if a visible part of it is hit, or whatever.
   virtual bool IsHit(float x, float y) const { return mTargetRECT.Contains(x, y); }
 
-  void SetBlendType(EBlendType blend) { mBlend = blend; }
-  
+  void SetBlend(IBlend blend) { mBlend = blend; }
+    
   void SetValDisplayControl(IControl* pValDisplayControl) { mValDisplayControl = pValDisplayControl; }
   void SetNameDisplayControl(IControl* pNameDisplayControl) { mNameDisplayControl = pNameDisplayControl; }
 
@@ -151,7 +151,6 @@ public:
   // IPlugBase::OnIdle which is called from the audio processing thread.
   // Only active if USE_IDLE_CALLS is defined.
   virtual void OnGUIIdle() {}
-  
   
   /** A struct that contains a parameter index and normalized value */
    struct AuxParam 
@@ -186,12 +185,13 @@ public:
   IPlugBaseGraphics& GetPlug() { return mPlug; }
   IGraphics* GetGUI() { return mPlug.GetGUI(); }
   
+  void GetJSON(WDL_String& json, int idx) const;
+
 #ifdef VST3_API
   Steinberg::tresult PLUGIN_API executeMenuItem (Steinberg::int32 tag) override { OnContextSelection(tag); return Steinberg::kResultOk; }
 #endif
 
-  void GetJSON(WDL_String& json, int idx) const;
-  
+#pragma mark - IControl Member variables
 protected:
   IPlugBaseGraphics& mPlug;
   IRECT mRECT;
@@ -218,8 +218,8 @@ protected:
   bool mDisablePrompt = true;
   bool mClamped = false;
   bool mDblAsSingleClick = false;
-  bool mMOWhenGreyed = false;
-  bool mMEWhenGreyed = false;
+  bool mMOWhenGrayed = false;
+  bool mMEWhenGrayed = false;
   IControl* mValDisplayControl = nullptr;
   IControl* mNameDisplayControl = nullptr;
   WDL_String mTooltip;
@@ -236,19 +236,95 @@ protected:
 #endif
 };
 
+#pragma mark - BASIC CONTROLS AND BASE CLASSES
+
+/** A An interface for IVControls, in order for them to share a common set of colors. If you need more flexibility for theming, you're on your own! */
+class IVectorBase
+{
+public:
+  
+  IVectorBase(const IColor* pBGColor = &DEFAULT_BGCOLOR,  // background
+              const IColor* pFGColor = &DEFAULT_FGCOLOR,  // foreground,
+              const IColor* pFRColor = 0,                 // frame
+              const IColor* pHLColor = 0,                 // highlight
+              const IColor* pX1Color = 0,                 // extra1
+              const IColor* pX2Color = 0,                 // extra2
+              const IColor* pX3Color = 0)                 // extra3
+  {
+    SetColors(pBGColor, pFGColor, pFRColor, pHLColor, pX1Color, pX2Color, pX3Color);
+  }
+  
+  IVectorBase(const IVColorSpec& spec)
+  {
+    SetColors(&spec.mBGColor,
+              &spec.mFGColor,
+              &spec.mFRColor,
+              &spec.mHLColor,
+              &spec.mX1Color,
+              &spec.mX2Color,
+              &spec.mX3Color);
+  }
+  
+  void AddColor(const IColor& color)
+  {
+    mColors.Add(color);
+  }
+  
+  void SetColor(int colorIdx, const IColor& color)
+  {
+    if(colorIdx < mColors.GetSize())
+      mColors.Get()[colorIdx] = color;
+  }
+  
+  void SetColors(IVColorSpec& spec)
+  {
+    SetColors(&spec.mBGColor,
+              &spec.mFGColor,
+              &spec.mFRColor,
+              &spec.mHLColor,
+              &spec.mX1Color,
+              &spec.mX2Color,
+              &spec.mX3Color);
+  }
+  
+  void SetColors(const IColor* pBGColor = 0,
+                 const IColor* pFGColor = 0,
+                 const IColor* pFRColor = 0,
+                 const IColor* pHLColor = 0,
+                 const IColor* pX1Color = 0,
+                 const IColor* pX2Color = 0,
+                 const IColor* pX3Color = 0)
+  {
+    if(pBGColor) AddColor(*pBGColor);
+    if(pFGColor) AddColor(*pFGColor);
+    if(pFRColor) AddColor(*pFRColor);
+    if(pHLColor) AddColor(*pHLColor);
+    if(pX1Color) AddColor(*pX1Color);
+    if(pX2Color) AddColor(*pX2Color);
+    if(pX3Color) AddColor(*pX3Color);
+  }
+  
+  IColor& GetColor(int colorIdx)
+  {
+    if(colorIdx < mColors.GetSize())
+      return mColors.Get()[colorIdx];
+    else
+      return mColors.Get()[0];
+  }
+protected:
+  WDL_TypedBuf<IColor> mColors;
+};
+
 /** A basic control to fill a rectangle with a color */
-class IPanelControl : public IControl
+class IPanelControl : public IControl, public IVectorBase
 {
 public:
   IPanelControl(IPlugBaseGraphics& plug, IRECT rect, const IColor& color)
   : IControl(plug, rect)
-  , mColor(color)
+  , IVectorBase(&color)
   {}
 
   void Draw(IGraphics& graphics) override;
-
-protected:
-  IColor mColor;
 };
 
 /** A basic control to draw a bitmap, or one frame of a stacked bitmap depending on the current value. */
@@ -278,7 +354,8 @@ public:
 
   virtual void Draw(IGraphics& graphics) override;
   
-  /** Implement to do something when graphics is scaled globally (e.g. moves to hidpi screen), if you override this make sure you call the parent method in order to rescale mBitmap */
+  /** Implement to do something when graphics is scaled globally (e.g. moves to hidpi screen), 
+   *  if you override this make sure you call the parent method in order to rescale mBitmap */
   virtual void OnRescale() override;
   
 protected:
@@ -292,17 +369,14 @@ public:
   ISVGControl(IPlugBaseGraphics& plug, ISVG& svg, IRECT rect, int paramIdx)
     : IControl(plug, rect, paramIdx)
     , mSVG(svg)
-  {
-  };
+  {}
 
-  ~ISVGControl()
-  {
-  };
+  virtual ~ISVGControl() {}
 
-  void Draw(IGraphics& graphics);
+  virtual void Draw(IGraphics& graphics) override;
 
 private:
-  //TODO: should draw the SVG to intermediate bitmap
+  //TODO: cache the SVG to intermediate bitmap?
   ISVG mSVG;
 };
 
@@ -314,7 +388,7 @@ public:
   : IControl(plug, rect)
   , mStr(str)
   {
-    mText = text;
+    IControl::mText = text;
   }
   
   ~ITextControl() {}
@@ -352,14 +426,14 @@ protected:
   double mGearing;
 };
 
-/** Parent for buttons/switch controls */
-class IButtonControlBase : public IControl
+/** Parent for switch controls (including buttons a.k.a. momentary switches)*/
+class ISwitchControlBase : public IControl
 {
 public:
-  IButtonControlBase(IPlugBaseGraphics& plug, IRECT rect, int param = kNoParameter, IActionFunction actionFunc = nullptr,
+  ISwitchControlBase(IPlugBaseGraphics& plug, IRECT rect, int param = kNoParameter, IActionFunction aF = nullptr,
     uint32_t numStates = 2);
 
-  virtual ~IButtonControlBase() {}
+  virtual ~ISwitchControlBase() {}
 
   virtual void OnMouseDown(float x, float y, const IMouseMod& mod) override;
 
@@ -370,98 +444,32 @@ protected:
 /** An abstract IControl base class that you can inherit from in order to make a control that pops up a menu to browse files */
 class IDirBrowseControlBase : public IControl
 {
+public:
+  IDirBrowseControlBase(IPlugBaseGraphics& plug, IRECT rect, const char* extension /* e.g. ".txt"*/)
+  : IControl(plug, rect)
+  {
+    mExtension.Set(extension);
+  }
+  
+  ~IDirBrowseControlBase();
+  
+  int NItems();
+  
+  void AddPath(const char* path, const char* label);
+  
+  void SetUpMenu();
+  
+  void GetSelecteItemPath(WDL_String& path);
+  
+private:
+  void ScanDirectory(const char* path, IPopupMenu& menuToAddTo);
+  
 protected:
+  int mSelectedIndex = -1;
+  IPopupMenu* mSelectedMenu = nullptr;
   IPopupMenu mMainMenu;
   WDL_PtrList<WDL_String> mPaths;
   WDL_PtrList<WDL_String> mPathLabels;
   WDL_PtrList<WDL_String> mFiles;
   WDL_String mExtension;
-
-  int mSelectedIndex;
-  
-public:
-  IDirBrowseControlBase(IPlugBaseGraphics& plug, IRECT rect, const char* extension /* e.g. ".txt"*/)
-  : IControl(plug, rect)
-  , mSelectedIndex(-1)
-  {
-    mExtension.Set(extension);
-  }
-  
-  ~IDirBrowseControlBase()
-  {
-    mFiles.Empty(true);
-    mPaths.Empty(true);
-    mPathLabels.Empty(true);
-  }
-  
-  int NItems()
-  {
-    return mFiles.GetSize();
-  }
-  
-  void AddPath(const char* path, const char* label)
-  {
-    mPaths.Add(new WDL_String(path));
-    mPathLabels.Add(new WDL_String(label));
-  }
-  
-  void SetUpMenu()
-  {
-    mFiles.Empty(true);    
-    mMainMenu.Clear();
-    mSelectedIndex = -1;
-    
-    int idx = 0;
-    
-    for (int p=0; p<mPaths.GetSize(); p++) 
-    {
-      IPopupMenu* pNewMenu = new IPopupMenu();
-      mMainMenu.AddItem(mPathLabels.Get(p)->Get(), idx++, pNewMenu);
-
-      IPopupMenu* pMenuToAddTo = pNewMenu;
-      ScanDirectory(mPaths.Get(p)->Get(), pMenuToAddTo);
-    }
-  }
-  
-private:
-  void ScanDirectory(const char* path, IPopupMenu* pMenuToAddTo)
-  {
-    WDL_DirScan d;
-    IPopupMenu* pParentDirMenu = pMenuToAddTo;
-    
-    if (!d.First(path))
-    {
-      do
-      {
-        const char* f=d.GetCurrentFN();
-        if (f && f[0] != '.')
-        {
-          if (d.GetCurrentIsDirectory())
-          {
-            WDL_String subdir;
-            d.GetCurrentFullFN(&subdir);
-            IPopupMenu* pNewMenu = new IPopupMenu();
-            pMenuToAddTo->AddItem(d.GetCurrentFN(), pNewMenu);
-            ScanDirectory(subdir.Get(), pNewMenu);
-          }
-          else
-          {
-            const char* a=strstr(f, mExtension.Get());
-            if (a && a > f && strlen(a) == strlen(mExtension.Get()))
-            {
-              WDL_String menuEntry = WDL_String(f, a-f);
-              pParentDirMenu->AddItem(new IPopupMenuItem(menuEntry.Get(), IPopupMenuItem::kNoFlags, mFiles.GetSize()));
-              WDL_String* pFullPath = new WDL_String("");
-              d.GetCurrentFullFN(pFullPath);
-              mFiles.Add(pFullPath);
-            }
-          }
-        }
-      }
-      while (!d.Next());
-      
-      pMenuToAddTo = pParentDirMenu;
-    }
-  }
-  
 };

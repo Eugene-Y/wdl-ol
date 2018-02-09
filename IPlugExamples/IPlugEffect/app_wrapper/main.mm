@@ -4,6 +4,31 @@
 #include "wdlstring.h"
 #include "swell.h"
 
+void CenterWindow(HWND hwnd)
+{
+  if (!hwnd) return;
+  
+  id view =(id) hwnd;
+  
+  if ([view isKindOfClass:[NSView class]])
+  {
+    NSWindow* pWindow = [view window];
+    [pWindow center];
+  }
+}
+
+bool IsSandboxed()
+{
+  NSString* pHomeDir = NSHomeDirectory();
+  //  NSString* pBundleIdentifier = [[NSBundle mainBundle] bundleIdentifier];
+  
+  if ([pHomeDir containsString:@"Library/Containers/"])
+  {
+    return true;
+  }
+  return false;
+}
+
 int main(int argc, char *argv[])
 {
   //if invoked with an argument registerauv3 use plug-in kit to explicitly register auv3 app extension (doesn't happen from debugger)
@@ -11,26 +36,13 @@ int main(int argc, char *argv[])
   {
     WDL_String appexPath(argv[0]);
     appexPath.SetFormatted(1024, "pluginkit -a %s%s%s.appex", argv[0], "/../../Plugins/", appexPath.get_filepart());
-    system(appexPath.Get());
-    printf("registered audiounit app extension\n");
+    if(system(appexPath.Get()) > -1)
+      NSLog(@"Registered audiounit app extension\n");
+    
+    if(IsSandboxed())
+      NSLog(@"SANDBOXED\n");
   }
   
   return NSApplicationMain(argc,  (const char **) argv);
 }
 
-void CenterWindow(HWND hwnd)
-{
-  if (!hwnd) return;
-  
-  id turd=(id)hwnd;
-  
-  if ([turd isKindOfClass:[NSView class]])
-  {
-    NSWindow *w = [turd window];
-    [w center];
-  }
-  if ([turd isKindOfClass:[NSWindow class]])
-  {
-    [turd center];
-  }
-}
