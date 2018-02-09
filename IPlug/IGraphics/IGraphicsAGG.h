@@ -1,63 +1,14 @@
 #pragma once
 
 #include "IGraphics.h"
+#include "IGraphicsAGG_src.h"
 
-#ifdef OS_OSX
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-register"
-#endif
-
-//agg
-#include "agg_basics.h"
-#include "agg_renderer_base.h"
-#include "agg_renderer_primitives.h"
-#include "agg_rendering_buffer.h"
-#include "agg_pixfmt_rgb.h"
-#include "agg_pixfmt_rgba.h"
-#include "agg_pixfmt_amask_adaptor.h"
-#include "agg_renderer_scanline.h"
-#include "agg_rasterizer_scanline_aa.h"
-#include "agg_renderer_outline_aa.h"
-#include "agg_rasterizer_outline_aa.h"
-#include "agg_conv_stroke.h"
-#include "agg_conv_dash.h"
-#include "agg_conv_curve.h"
-#include "agg_conv_contour.h"
-#include "agg_conv_smooth_poly1.h"
-#include "agg_conv_marker.h"
-#include "agg_arrowhead.h"
-#include "agg_vcgen_markers_term.h"
-#include "agg_scanline_p.h"
-#include "agg_renderer_scanline.h"
-#include "agg_pixfmt_rgb.h"
-#include "agg_pixfmt_gray.h"
-#include "agg_alpha_mask_u8.h"
-#include "agg_path_storage.h"
-#include "agg_bounding_rect.h"
-#include "agg_ellipse.h"
-#include "agg_font_freetype.h"
-#include "agg_pmap.h"
-#include "agg_font.h"
-#include "agg_image_accessors.h"
-#include "agg_span_allocator.h"
-#include "agg_span_interpolator_linear.h"
-#include "agg_renderer_outline_image.h"
-#include "agg_pattern_filters_rgba.h"
-#include "agg_span_image_filter_rgba.h"
-#include "agg_span_image_filter_rgb.h"
-#include "agg_span_image_filter_gray.h"
-#include "agg_span_interpolator_linear.h"
-#include "agg_rounded_rect.h"
-#include "agg_span_converter.h"
-#include "agg_conv_segmentator.h"
-#include "agg_trans_single_path.h"
-
-#ifdef OS_OSX
-#include "agg_mac_pmap.h"
-#include "agg_mac_font.h"
-#pragma clang diagnostic pop
-#endif
-
+class AGGBitmap : public APIBitmap
+{
+public:
+  AGGBitmap(agg::pixel_map* pPixMap, int scale) : APIBitmap (pPixMap, pPixMap->width(), pPixMap->height(), scale) {}
+  virtual ~AGGBitmap() { delete ((agg::pixel_map*) GetBitmap()); }
+};
 
 inline const agg::rgba8 AGGColor(const IColor& color, const IBlend* pBlend = nullptr)
 {
@@ -67,9 +18,8 @@ inline const agg::rgba8 AGGColor(const IColor& color, const IBlend* pBlend = nul
 inline agg::comp_op_e AGGBlendMode(const IBlend* pBlend)
 {
   if (!pBlend)
-  {
     return agg::comp_op_src;
-  }
+  
   switch (pBlend->mMethod)
   {
     case kBlendClobber: return agg::comp_op_src_over;
@@ -79,6 +29,14 @@ inline agg::comp_op_e AGGBlendMode(const IBlend* pBlend)
     default:
       return agg::comp_op_src_over;
   }
+}
+
+inline const agg::cover_type AGGCover(const IBlend* pBlend = nullptr)
+{
+  if (!pBlend)
+    return 255;
+  
+  return std::max(agg::cover_type(0), std::min(agg::cover_type(roundf(pBlend->mWeight * 255.f)), agg::cover_type(255)));
 }
 
 /** IGraphics draw class using Antigrain Geometry  
@@ -103,15 +61,14 @@ public:
   typedef agg::comp_op_adaptor_rgba_pre<agg::rgba8, PixelOrder> BlenderTypePre;
   typedef agg::pixfmt_custom_blend_rgba<BlenderType, agg::rendering_buffer> PixfmtType;
   typedef agg::pixfmt_custom_blend_rgba<BlenderTypePre, agg::rendering_buffer> PixfmtTypePre;
-  
   typedef agg::renderer_base <PixfmtType> RenbaseType;
   typedef agg::font_engine_freetype_int32 FontEngineType;
   typedef agg::font_cache_manager <FontEngineType> FontManagerType;
   typedef agg::span_interpolator_linear<> interpolatorType;
   typedef agg::image_accessor_clip<PixfmtType> imgSourceType;
   typedef agg::span_image_filter_rgba_bilinear_clip <PixfmtType, interpolatorType> spanGenType;
-  //typedef agg::renderer_scanline_aa_solid<RenbaseType> rendererSolid;
-  //typedef agg::renderer_scanline_bin_solid<RenbaseType> rendererBin;
+  typedef agg::renderer_scanline_aa_solid<RenbaseType> rendererSolid;
+  typedef agg::renderer_scanline_bin_solid<RenbaseType> rendererBin;
   typedef agg::renderer_base<agg::pixfmt_gray8> maskRenBase;
   typedef agg::scanline_u8_am<agg::alpha_mask_gray8> scanlineType;
   
@@ -123,7 +80,7 @@ public:
   void Draw(const IRECT& rect) override;
   
   void DrawSVG(ISVG& svg, const IRECT& dest, const IBlend* pBlend) override {}
-    void DrawRotatedSVG(ISVG& svg, float destCtrX, float destCtrY, float width, float height, double angle, const IBlend* pBlend) override {}
+  void DrawRotatedSVG(ISVG& svg, float destCtrX, float destCtrY, float width, float height, double angle, const IBlend* pBlend) override {}
 
   void DrawBitmap(IBitmap& bitmap, const IRECT& dest, int srcX, int srcY, const IBlend* pBlend) override;
   void DrawRotatedBitmap(IBitmap& bitmap, int destCtrX, int destCtrY, double angle, int yOffsetZeroDeg, const IBlend* pBlend) override;
@@ -155,12 +112,8 @@ public:
   void* GetData() override { return 0; } //todo
   const char* GetDrawingAPIStr() override { return "AGG"; }
 
-  IBitmap LoadBitmap(const char* name, int nStates, bool framesAreHoriztonal, double scale) override;
-  IBitmap ScaleBitmap(const IBitmap& bitmap, const char* cacheName, double scale) override;
-  IBitmap CropBitmap(const IBitmap& bitmap, const IRECT& rect, const char* cacheName, double scale) override;
-  void RetainBitmap(IBitmap& bitmap, const char* cacheName) override {};
-  void ReleaseBitmap(IBitmap& bitmap) override {};
-//  IBitmap CreateIBitmap(const char * cacheName, int w, int h) override;
+ // IBitmap CropBitmap(const IBitmap& bitmap, const IRECT& rect, const char* cacheName, int scale) override;
+ //  IBitmap CreateIBitmap(const char * cacheName, int w, int h) override;
 
   void RenderDrawBitmap() override;
 
@@ -202,20 +155,21 @@ private:
   FontEngineType mFontEngine;
   FontManagerType mFontManager;
   agg::rendering_buffer mRenBuf;
-#ifdef OS_OSX
+#ifdef OS_MAC
   agg::pixel_map_mac mPixelMap;
 #else
+  //TODO:
 #endif
   
 private:
-  agg::pixel_map* LoadAPIBitmap(const char* pPath);
+  APIBitmap* LoadAPIBitmap(const WDL_String& resourcePath, int scale) override;
   agg::pixel_map* CreateAPIBitmap(int w, int h);
-  agg::pixel_map* ScaleAPIBitmap(agg::pixel_map* pixel_map, int destW, int destH);
+  APIBitmap* ScaleAPIBitmap(const APIBitmap* pBitmap, int s) override;
 
   //pipeline to process the vectors glyph paths(curves + contour)
   agg::conv_curve<FontManagerType::path_adaptor_type> mFontCurves;
   agg::conv_contour<agg::conv_curve<FontManagerType::path_adaptor_type> > mFontContour;
   
-  void CalculateTextLines(WDL_TypedBuf<LineInfo> * lines, const IRECT& rect, const char * str, FontManagerType& manager);
+  void CalculateTextLines(WDL_TypedBuf<LineInfo>* pLines, const IRECT& rect, const char* str, FontManagerType& manager);
   void ToPixel(float & pixel);
 };

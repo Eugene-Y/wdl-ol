@@ -4,83 +4,97 @@
 #include "IKeyboardControl.h"
 #include "config.h"
 
-class MyControl : public IControl
-{
-private:
-  double mPhase = 0.;
-public:
-  MyControl(IPlugBaseGraphics& plug, IRECT rect)
-  : IControl(plug, rect)
-  {
-  }
-  
-  void Draw(IGraphics& g) override
-  {
-    //g.DrawRect(COLOR_BLUE, mRECT.GetPadded(-50));
-    g.FillRect(COLOR_BLUE, mRECT.GetScaled((float) mPhase));
-    //g.FillRect(COLOR_GREEN, mRECT.GetScaled(1.-mPhase));
-  }
-  
-  bool IsDirty() override
-  {
-    mPhase += 0.01;
-    
-    if (mPhase > 1.)
-      mPhase-=1.;
-    
-    return true;
-  }
-};
+#include "IPlugEffect_controls.h"
 
+#ifdef OS_MAC
+#pragma mark - WATCH OUT IF APP IS SANDBOXED, YOU WON'T FIND ANY FILES HERE
+#define SVG_FOLDER "/Users/oli/Dev/VCVRack/Rack/res/ComponentLibrary/"
+#define KNOB_FN "resources/img/BefacoBigKnob.svg"
+#else
+#define SVG_FOLDER "C:\\Program Files\\VCV\\Rack\\res\\ComponentLibrary\\"
+#define KNOB_FN "C:\\Program Files\\VCV\\Rack\\res\\ComponentLibrary\\BefacoBigKnob.svg"
+#endif
 
 IPlugEffect::IPlugEffect(IPlugInstanceInfo instanceInfo)
 : IPLUG_CTOR(kNumParams, kNumPrograms, instanceInfo)
 {
-  TRACE; 
-
-  //arguments are: name, defaultVal, minVal, maxVal, step, label
+  TRACE;
+  
   GetParam(kGain)->InitDouble("Gain", 0., 0., 100.0, 0.01, "%");
-  GetParam(kGain)->SetShape(2.);
 
-  //create user interface
-  IGraphics* pGraphics = MakeGraphics(*this, kWidth, kHeight, 30);
-  pGraphics->AttachPanelBackground(COLOR_RED);
+#ifndef NO_IGRAPHICS
   
-  // lamda function for custom actions on stock IControls
-  pGraphics->AttachControl(new IVSwitchControl(*this, IRECT(kGainX, kGainY, kGainX + 200, kGainY + 200), kNoParameter, [](IControl* pControl)
-  {
-    //pGraphics->ShowMessageBox("do you like lambdas?", "", MB_YESNO); // blocks
-    pControl->Hide(true);
-  }));
+  IGraphics* pGraphics = MakeGraphics(*this, kWidth, kHeight, 60);
+  pGraphics->AttachPanelBackground(COLOR_GRAY);
   
-//  pGraphics->AttachControl(new IVKnobControl(*this, IRECT(kGainX, kGainY, kGainX + 100, kGainY + 100), kGain, COLOR_BLACK));
+  const int NRows = 2;
+  const int NColumns = 2;
+
+  IRECT bounds = pGraphics->GetBounds();
+//  IColor color;
+//
+  pGraphics->AttachControl(new IArcControl(*this, bounds.GetGridCell(0, NRows, NColumns).GetPadded(-5.), kGain));
+  pGraphics->AttachControl(new IPolyControl(*this, bounds.GetGridCell(1, NRows, NColumns).GetPadded(-5.), -1));
+
+//  for(auto cell = 0; cell < (NRows * NColumns); cell++ )
+//  {
+//    IRECT cellRect = bounds.GetGridCell(cell, NRows, NColumns);
+//    pGraphics->AttachControl(new IVSwitchControl(*this, cellRect, kNoParameter, [pGraphics](IControl* pCaller)
+//                                                   {
+//                                                     pCaller->SetMEWhenGrayed(true);
+//                                                     pCaller->GrayOut(pGraphics->ShowMessageBox("Disable that box control?", "", MB_YESNO) == IDYES);
+//                                                   }));
+//  }
+
+//  auto svg = pGraphics->LoadSVG(KNOB_FN); // load initial svg, can be a resource or absolute path
+//
+//  for(auto cell = 0; cell < (NRows * NColumns); cell++ )
+//  {
+//    IRECT cellRect = bounds.GetGridCell(cell, NRows, NColumns);
+//    auto knobControl = new SVGKnob(*this, cellRect, svg, kGain);
+//    pGraphics->AttachControl(knobControl);
+//  }
+
+  //  auto fileMenuControl = new FileMenu(*this, bounds.GetGridCell(1, NRows, NColumns).SubRectVertical(2, 1).GetVPadded(-20.).GetHPadded(-20.),
+//                                           [pGraphics, knobControl](IControl* pCaller)
+//                                           {
+//                                             WDL_String path;
+//                                             dynamic_cast<IDirBrowseControlBase*>(pCaller)->GetSelecteItemPath(path);
+//                                             auto svg = pGraphics->LoadSVG(path.Get());
+//                                             knobControl->SetSVG(svg);
+//                                           },
+//                                          DEFAULT_TEXT, ".svg");
+//  fileMenuControl->SetPath(SVG_FOLDER);
+//  pGraphics->AttachControl(fileMenuControl);
+
+
+  IRECT kbrect = bounds.SubRectVertical(2, 1).GetPadded(-5.); // same as joining two cells
+  pGraphics->AttachControl(new IVKeyboardControl(*this, kbrect, 36, 60));
 
   pGraphics->AttachControl(new IVKeyboardControl(*this, 50, 20, 0, 35));
 
   AttachGraphics(pGraphics);
+  
+  pGraphics->HandleMouseOver(true);
 //  pGraphics->EnableLiveEdit(true);
-  PrintDebugInfo();
+//  pGraphics->ShowControlBounds(true);
+//  pGraphics->ShowAreaDrawn(true);
 
-  //MakePreset("preset 1", ... );
-  MakeDefaultPreset("-", kNumPrograms);
+#endif
+  PrintDebugInfo();
 }
 
-IPlugEffect::~IPlugEffect() {}
-
-void IPlugEffect::ProcessBlock(double** inputs, double** outputs, int nFrames)
+void IPlugEffect::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
-  mParams_mutex.Enter();
+  ENTER_PARAMS_MUTEX;
   const double gain = GetParam(kGain)->Value() / 100.;
-  mParams_mutex.Leave();
+  LEAVE_PARAMS_MUTEX;
   
-  double* in1 = inputs[0];
-  double* in2 = inputs[1];
-  double* out1 = outputs[0];
-  double* out2 = outputs[1];
-
-  for (int s = 0; s < nFrames; ++s, ++in1, ++in2, ++out1, ++out2)
-  {
-    *out1 = *in1 * gain;
-    *out2 = *in2 * gain;
+  const int nChans = NChannelsConnected(ERoute::kOutput);
+  
+  for (auto s = 0; s < nFrames; s++) {
+    for (auto c = 0; c < nChans; c++) {
+      outputs[c][s] = inputs[c][s] * gain;
+    }
   }
 }

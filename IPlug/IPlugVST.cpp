@@ -11,33 +11,19 @@ int VSTSpkrArrType(int nchan)
   return kSpeakerArrUserDefined;
 }
 
-double VSTString2Parameter(IParam* pParam, char* ptr)
-{
-  double v;
-  bool mapped = pParam->GetNDisplayTexts();
-  if (mapped)
-  {
-    int vi;
-    mapped = pParam->MapDisplayText(ptr, &vi);
-    if (mapped) v = (double)vi;
-  }
-  if (!mapped)
-  {
-    v = atof(ptr);
-    if (pParam->GetDisplayIsNegated()) v = -v;
-  }
-  return v;
-}
-
 IPlugVST::IPlugVST(IPlugInstanceInfo instanceInfo, IPlugConfig c)
   : IPLUG_BASE_CLASS(c, kAPIVST2)
+  , IPlugProcessor<PLUG_SAMPLE_DST>(c, kAPIVST2)
+  , IPlugPresetHandler(c, kAPIVST2)
   , mHostCallback(instanceInfo.mVSTHostCallback)
 {
   Trace(TRACELOC, "%s", c.effectName);
 
+  AttachPresetHandler(this);
+
   mHasVSTExtensions = VSTEXT_NONE;
 
-  int nInputs = NInChannels(), nOutputs = NOutChannels();
+  int nInputs = MaxNChannels(ERoute::kInput), nOutputs = MaxNChannels(ERoute::kOutput);
 
   memset(&mAEffect, 0, sizeof(AEffect));
   mAEffect.object = this;
@@ -71,8 +57,8 @@ IPlugVST::IPlugVST(IPlugInstanceInfo instanceInfo, IPlugConfig c)
   mOutputSpkrArr.type = VSTSpkrArrType(nOutputs);
 
   // Default everything to connected, then disconnect pins if the host says to.
-  SetInputChannelConnections(0, nInputs, true);
-  SetOutputChannelConnections(0, nOutputs, true);
+  SetChannelConnections(ERoute::kInput, 0, nInputs, true);
+  SetChannelConnections(ERoute::kOutput, 0, nOutputs, true);
 
   SetBlockSize(DEFAULT_BLOCK_SIZE);
 }
@@ -95,84 +81,6 @@ void IPlugVST::EndInformHostOfParamChange(int idx)
 void IPlugVST::InformHostOfProgramChange()
 {
   mHostCallback(&mAEffect, audioMasterUpdateDisplay, 0, 0, 0, 0.0f);
-}
-
-inline VstTimeInfo* GetTimeInfo(audioMasterCallback hostCallback, AEffect* pAEffect, int filter = 0)
-{
-#pragma warning(disable:4312) // Pointer size cast mismatch.
-  VstTimeInfo* pTI = (VstTimeInfo*) hostCallback(pAEffect, audioMasterGetTime, 0, filter, 0, 0);
-#pragma warning(default:4312)
-  if (pTI && (!filter || (pTI->flags & filter)))
-  {
-    return pTI;
-  }
-  return 0;
-}
-
-int IPlugVST::GetSamplePos()
-{
-  VstTimeInfo* pTI = GetTimeInfo(mHostCallback, &mAEffect);
-  if (pTI && pTI->samplePos >= 0.0)
-  {
-    return int(pTI->samplePos + 0.5);
-  }
-  return 0;
-}
-
-double IPlugVST::GetTempo()
-{
-  if (mHostCallback)
-  {
-    VstTimeInfo* pTI = GetTimeInfo(mHostCallback, &mAEffect, kVstTempoValid);
-    if (pTI && pTI->tempo >= 0.0)
-    {
-      return pTI->tempo;
-    }
-  }
-  return 0.0;
-}
-
-void IPlugVST::GetTimeSig(int& numerator, int& denominator)
-{
-  numerator = denominator = 0;
-  VstTimeInfo* pTI = GetTimeInfo(mHostCallback, &mAEffect, kVstTimeSigValid);
-  if (pTI && pTI->timeSigNumerator >= 0.0 && pTI->timeSigDenominator >= 0.0)
-  {
-    numerator = pTI->timeSigNumerator;
-    denominator = pTI->timeSigDenominator;
-  }
-}
-
-void IPlugVST::GetTime(ITimeInfo& timeInfo)
-{
-  VstTimeInfo* pTI = GetTimeInfo(mHostCallback,
-                                 &mAEffect,
-                                 kVstPpqPosValid |
-                                 kVstTempoValid |
-                                 kVstBarsValid |
-                                 kVstCyclePosValid |
-                                 kVstTimeSigValid );
-
-  if (pTI)
-  {
-    timeInfo.mSamplePos = pTI->samplePos;
-
-    if ((pTI->flags & kVstPpqPosValid) && pTI->ppqPos >= 0.0) timeInfo.mPPQPos = pTI->ppqPos;
-    if ((pTI->flags & kVstTempoValid) && pTI->tempo > 0.0) timeInfo.mTempo = pTI->tempo;
-    if ((pTI->flags & kVstBarsValid) && pTI->barStartPos >= 0.0) timeInfo.mLastBar = pTI->barStartPos;
-    if ((pTI->flags & kVstCyclePosValid) && pTI->cycleStartPos >= 0.0 && pTI->cycleEndPos >= 0.0)
-    {
-      timeInfo.mCycleStart = pTI->cycleStartPos;
-      timeInfo.mCycleEnd = pTI->cycleEndPos;
-    }
-    if ((pTI->flags & kVstTimeSigValid) && pTI->timeSigNumerator > 0.0 && pTI->timeSigDenominator > 0.0)
-    {
-      timeInfo.mNumerator = pTI->timeSigNumerator;
-      timeInfo.mDenominator = pTI->timeSigDenominator;
-    }
-    timeInfo.mTransportIsRunning = pTI->flags & kVstTransportPlaying;
-    timeInfo.mTransportLoopEnabled = pTI->flags & kVstTransportCycleActive;
-  }
 }
 
 EHost IPlugVST::GetHost()
@@ -225,15 +133,10 @@ void IPlugVST::ResizeGraphics(int w, int h, double scale)
   }
 }
 
-bool IPlugVST::IsRenderingOffline()
-{
-  return mHostCallback(&mAEffect, audioMasterGetCurrentProcessLevel, 0, 0, 0, 0.0f) == kVstProcessLevelOffline;
-}
-
 void IPlugVST::SetLatency(int samples)
 {
   mAEffect.initialDelay = samples;
-  IPLUG_BASE_CLASS::SetLatency(samples);
+  IPlugProcessor::SetLatency(samples);
 }
 
 bool IPlugVST::SendVSTEvent(VstEvent& event)
@@ -248,7 +151,7 @@ bool IPlugVST::SendVSTEvent(VstEvent& event)
   return (mHostCallback(&mAEffect, audioMasterProcessEvents, 0, 0, &events, 0.0f) == 1);
 }
 
-bool IPlugVST::SendMidiMsg(IMidiMsg& msg)
+bool IPlugVST::SendMidiMsg(const IMidiMsg& msg)
 {
   VstMidiEvent midiEvent;
   memset(&midiEvent, 0, sizeof(VstMidiEvent));
@@ -277,11 +180,6 @@ bool IPlugVST::SendSysEx(ISysEx& msg)
   return SendVSTEvent((VstEvent&) sysexEvent);
 }
 
-audioMasterCallback IPlugVST::GetHostCallback()
-{
-  return mHostCallback;
-}
-
 void IPlugVST::HostSpecificInit()
 {
   if (!mHostSpecificInitDone)
@@ -294,7 +192,7 @@ void IPlugVST::HostSpecificInit()
       case kHostOrion:
       case kHostForte:
       case kHostSAWStudio:
-        LimitToStereoIO();
+        LimitToStereoIO(); //TODO:  is this still necessary?
         break;
       default:
         break;
@@ -302,8 +200,8 @@ void IPlugVST::HostSpecificInit()
 
     // This won't always solve a picky host problem -- for example Forte
     // looks at mAEffect IO count before identifying itself.
-    mAEffect.numInputs = mInputSpkrArr.numChannels = NInChannels();
-    mAEffect.numOutputs = mOutputSpkrArr.numChannels = NOutChannels();
+    mAEffect.numInputs = mInputSpkrArr.numChannels = MaxNChannels(ERoute::kInput);
+    mAEffect.numOutputs = mOutputSpkrArr.numChannels = MaxNChannels(ERoute::kOutput);
 
     OnHostIdentified();
   }
@@ -336,7 +234,7 @@ VstIntPtr VSTCALLBACK IPlugVST::VSTDispatcher(AEffect *pEffect, VstInt32 opCode,
     case effOpen:
     {
       _this->HostSpecificInit();
-      _this->OnParamReset();
+      _this->OnParamReset(kReset);
       return 0;
     }
     case effClose:
@@ -346,7 +244,7 @@ VstIntPtr VSTCALLBACK IPlugVST::VSTDispatcher(AEffect *pEffect, VstInt32 opCode,
     }
     case effGetParamLabel:
     {
-      WDL_MutexLock lock(&_this->mParams_mutex);
+      LOCK_PARAMS_MUTEX_STATIC;
       if (idx >= 0 && idx < _this->NParams())
       {
         strcpy((char*) ptr, _this->GetParam(idx)->GetLabelForHost());
@@ -355,16 +253,17 @@ VstIntPtr VSTCALLBACK IPlugVST::VSTDispatcher(AEffect *pEffect, VstInt32 opCode,
     }
     case effGetParamDisplay:
     {
-      WDL_MutexLock lock(&_this->mParams_mutex);
+      LOCK_PARAMS_MUTEX_STATIC;
       if (idx >= 0 && idx < _this->NParams())
       {
-        _this->GetParam(idx)->GetDisplayForHost((char*) ptr);
+        _this->GetParam(idx)->GetDisplayForHost(_this->mParamDisplayStr);
+        strcpy((char*) ptr, _this->mParamDisplayStr.Get());
       }
       return 0;
     }
     case effGetParamName:
     {
-      WDL_MutexLock lock(&_this->mParams_mutex);
+      LOCK_PARAMS_MUTEX_STATIC;
       if (idx >= 0 && idx < _this->NParams())
       {
         strcpy((char*) ptr, _this->GetParam(idx)->GetNameForHost());
@@ -373,7 +272,7 @@ VstIntPtr VSTCALLBACK IPlugVST::VSTDispatcher(AEffect *pEffect, VstInt32 opCode,
     }
     case effGetParameterProperties:
     {
-      WDL_MutexLock lock(&_this->mParams_mutex);
+      LOCK_PARAMS_MUTEX_STATIC;
       if (idx >= 0 && idx < _this->NParams())
       {
         VstParameterProperties* props = (VstParameterProperties*) ptr;
@@ -406,16 +305,16 @@ VstIntPtr VSTCALLBACK IPlugVST::VSTDispatcher(AEffect *pEffect, VstInt32 opCode,
     }
     case effString2Parameter:
     {
-      WDL_MutexLock lock(&_this->mParams_mutex);
+      LOCK_PARAMS_MUTEX_STATIC;
       if (idx >= 0 && idx < _this->NParams())
       {
         if (ptr)
         {
           IParam* pParam = _this->GetParam(idx);
-          const double v = VSTString2Parameter(pParam, (char*)ptr);
+          const double v = pParam->StringToValue((const char *)ptr);
           pParam->Set(v);
           _this->SetParameterInUIFromAPI(idx, v, false);
-          _this->OnParamChange(idx);
+          _this->OnParamChange(idx, kAutomation);
         }
         return 1;
       }
@@ -570,27 +469,25 @@ VstIntPtr VSTCALLBACK IPlugVST::VSTDispatcher(AEffect *pEffect, VstInt32 opCode,
     }
     case effCanBeAutomated:
     {
-      return 1;
+      if (idx >= 0 && idx < _this->NParams())
+      {
+        return _this->GetParam(idx)->GetCanAutomate();
+      }
     }
     case effGetInputProperties:
     {
-      if (ptr && idx >= 0 && idx < _this->NInChannels())
+      if (ptr && idx >= 0 && idx < _this->MaxNChannels(ERoute::kInput))
       {
         VstPinProperties* pp = (VstPinProperties*) ptr;
         pp->flags = kVstPinIsActive;
-        if (!(idx%2) && idx < _this->NInChannels()-1)
-        {
-          pp->flags |= kVstPinIsStereo;
-        }
 
-        if (_this->GetInputLabel(idx)->GetLength())
-        {
-          sprintf(pp->label, "%s", _this->GetInputLabel(idx)->Get());
-        }
+        if (!(idx%2) && idx < _this->MaxNChannels(ERoute::kInput)-1)
+          pp->flags |= kVstPinIsStereo;
+
+        if (_this->GetChannelLabel(ERoute::kInput, idx).GetLength())
+          sprintf(pp->label, "%s", _this->GetChannelLabel(ERoute::kInput, idx).Get());
         else
-        {
           sprintf(pp->label, "Input %d", idx + 1);
-        }
 
         return 1;
       }
@@ -598,23 +495,18 @@ VstIntPtr VSTCALLBACK IPlugVST::VSTDispatcher(AEffect *pEffect, VstInt32 opCode,
     }
     case effGetOutputProperties:
     {
-      if (ptr && idx >= 0 && idx < _this->NOutChannels())
+      if (ptr && idx >= 0 && idx < _this->MaxNChannels(ERoute::kOutput))
       {
         VstPinProperties* pp = (VstPinProperties*) ptr;
         pp->flags = kVstPinIsActive;
-        if (!(idx%2) && idx < _this->NOutChannels()-1)
-        {
-          pp->flags |= kVstPinIsStereo;
-        }
 
-        if (_this->GetOutputLabel(idx)->GetLength())
-        {
-          sprintf(pp->label, "%s", _this->GetOutputLabel(idx)->Get());
-        }
+        if (!(idx%2) && idx < _this->MaxNChannels(ERoute::kOutput)-1)
+          pp->flags |= kVstPinIsStereo;
+
+        if (_this->GetChannelLabel(ERoute::kOutput, idx).GetLength())
+          sprintf(pp->label, "%s", _this->GetChannelLabel(ERoute::kOutput, idx).Get());
         else
-        {
           sprintf(pp->label, "Output %d", idx + 1);
-        }
 
         return 1;
       }
@@ -637,14 +529,14 @@ VstIntPtr VSTCALLBACK IPlugVST::VSTDispatcher(AEffect *pEffect, VstInt32 opCode,
       if (pInputArr)
       {
         int n = pInputArr->numChannels;
-        _this->SetInputChannelConnections(0, n, true);
-        _this->SetInputChannelConnections(n, _this->NInChannels() - n, false);
+        _this->SetChannelConnections(ERoute::kInput, 0, n, true);
+        _this->SetChannelConnections(ERoute::kInput, n, _this->MaxNChannels(ERoute::kInput) - n, false);
       }
       if (pOutputArr)
       {
         int n = pOutputArr->numChannels;
-        _this->SetOutputChannelConnections(0, n, true);
-        _this->SetOutputChannelConnections(n, _this->NOutChannels() - n, false);
+        _this->SetChannelConnections(ERoute::kOutput, 0, n, true);
+        _this->SetChannelConnections(ERoute::kOutput, n, _this->MaxNChannels(ERoute::kOutput) - n, false);
       }
       return 1;
     }
@@ -753,7 +645,8 @@ VstIntPtr VSTCALLBACK IPlugVST::VSTDispatcher(AEffect *pEffect, VstInt32 opCode,
           {
             if (value >= 0 && value < _this->NParams())
             {
-              _this->GetParam((int) value)->GetDisplayForHost((double) opt, true, (char*) ptr);
+              _this->GetParam((int) value)->GetDisplayForHost((double) opt, true, _this->mParamDisplayStr);
+              strcpy((char*) ptr, _this->mParamDisplayStr.Get());
             }
             return 0xbeef;
           }
@@ -766,7 +659,7 @@ VstIntPtr VSTCALLBACK IPlugVST::VSTDispatcher(AEffect *pEffect, VstInt32 opCode,
             if (*(char*) ptr != '\0')
             {
               IParam* pParam = _this->GetParam((int) value);
-              sprintf((char*) ptr, "%.17f", pParam->GetNormalized(VSTString2Parameter(pParam, (char*) ptr)));
+              sprintf((char*) ptr, "%.17f", pParam->GetNormalized(pParam->StringToValue((const char*) ptr)));
             }
             return 0xbeef;
           }
@@ -868,38 +761,67 @@ VstIntPtr VSTCALLBACK IPlugVST::VSTDispatcher(AEffect *pEffect, VstInt32 opCode,
 }
 
 template <class SAMPLETYPE>
-void IPlugVST::VSTPrepProcess(SAMPLETYPE** inputs, SAMPLETYPE** outputs, VstInt32 nFrames)
+void IPlugVST::VSTPreProcess(SAMPLETYPE** inputs, SAMPLETYPE** outputs, VstInt32 nFrames)
 {
   if (DoesMIDI())
-  {
     mHostCallback(&mAEffect, __audioMasterWantMidiDeprecated, 0, 0, 0, 0.0f);
+
+  AttachBuffers(ERoute::kInput, 0, MaxNChannels(ERoute::kInput), inputs, nFrames);
+  AttachBuffers(ERoute::kOutput, 0, MaxNChannels(ERoute::kOutput), outputs, nFrames);
+  
+  VstTimeInfo* pTI = (VstTimeInfo*) mHostCallback(&mAEffect, audioMasterGetTime, 0, kVstPpqPosValid | kVstTempoValid | kVstBarsValid | kVstCyclePosValid | kVstTimeSigValid, 0, 0);
+  
+  ITimeInfo timeInfo;
+  
+  if (pTI)
+  {
+    timeInfo.mSamplePos = pTI->samplePos;
+    
+    if ((pTI->flags & kVstPpqPosValid) && pTI->ppqPos >= 0.0) timeInfo.mPPQPos = pTI->ppqPos;
+    if ((pTI->flags & kVstTempoValid) && pTI->tempo > 0.0) timeInfo.mTempo = pTI->tempo;
+    if ((pTI->flags & kVstBarsValid) && pTI->barStartPos >= 0.0) timeInfo.mLastBar = pTI->barStartPos;
+    if ((pTI->flags & kVstCyclePosValid) && pTI->cycleStartPos >= 0.0 && pTI->cycleEndPos >= 0.0)
+    {
+      timeInfo.mCycleStart = pTI->cycleStartPos;
+      timeInfo.mCycleEnd = pTI->cycleEndPos;
+    }
+    if ((pTI->flags & kVstTimeSigValid) && pTI->timeSigNumerator > 0.0 && pTI->timeSigDenominator > 0.0)
+    {
+      timeInfo.mNumerator = pTI->timeSigNumerator;
+      timeInfo.mDenominator = pTI->timeSigDenominator;
+    }
+    timeInfo.mTransportIsRunning = pTI->flags & kVstTransportPlaying;
+    timeInfo.mTransportLoopEnabled = pTI->flags & kVstTransportCycleActive;
   }
-  AttachInputBuffers(0, NInChannels(), inputs, nFrames);
-  AttachOutputBuffers(0, NOutChannels(), outputs);
+  
+  const bool renderingOffline = mHostCallback(&mAEffect, audioMasterGetCurrentProcessLevel, 0, 0, 0, 0.0f) == kVstProcessLevelOffline;
+  
+  SetTimeInfo(timeInfo);
+  SetRenderingOffline(renderingOffline);
 }
 
 // Deprecated.
 void VSTCALLBACK IPlugVST::VSTProcess(AEffect* pEffect, float** inputs, float** outputs, VstInt32 nFrames)
 {
-  TRACE_PROCESS;
+  TRACE;
   IPlugVST* _this = (IPlugVST*) pEffect->object;
-  _this->VSTPrepProcess(inputs, outputs, nFrames);
-  _this->ProcessBuffersAccumulating((float) 0.0f, nFrames);
+  _this->VSTPreProcess(inputs, outputs, nFrames);
+  _this->ProcessBuffersAccumulating(nFrames);
 }
 
 void VSTCALLBACK IPlugVST::VSTProcessReplacing(AEffect* pEffect, float** inputs, float** outputs, VstInt32 nFrames)
 {
-  TRACE_PROCESS;
+  TRACE;
   IPlugVST* _this = (IPlugVST*) pEffect->object;
-  _this->VSTPrepProcess(inputs, outputs, nFrames);
+  _this->VSTPreProcess(inputs, outputs, nFrames);
   _this->ProcessBuffers((float) 0.0f, nFrames);
 }
 
 void VSTCALLBACK IPlugVST::VSTProcessDoubleReplacing(AEffect* pEffect, double** inputs, double** outputs, VstInt32 nFrames)
 {
-  TRACE_PROCESS;
+  TRACE;
   IPlugVST* _this = (IPlugVST*) pEffect->object;
-  _this->VSTPrepProcess(inputs, outputs, nFrames);
+  _this->VSTPreProcess(inputs, outputs, nFrames);
   _this->ProcessBuffers((double) 0.0, nFrames);
 }
 
@@ -907,7 +829,7 @@ float VSTCALLBACK IPlugVST::VSTGetParameter(AEffect *pEffect, VstInt32 idx)
 {
   Trace(TRACELOC, "%d", idx);
   IPlugVST* _this = (IPlugVST*) pEffect->object;
-  WDL_MutexLock lock(&_this->mParams_mutex);
+  LOCK_PARAMS_MUTEX_STATIC;
   if (idx >= 0 && idx < _this->NParams())
   {
     return (float) _this->GetParam(idx)->GetNormalized();
@@ -919,11 +841,11 @@ void VSTCALLBACK IPlugVST::VSTSetParameter(AEffect *pEffect, VstInt32 idx, float
 {
   Trace(TRACELOC, "%d:%f", idx, value);
   IPlugVST* _this = (IPlugVST*) pEffect->object;
-  WDL_MutexLock lock(&_this->mParams_mutex);
+  LOCK_PARAMS_MUTEX_STATIC;
   if (idx >= 0 && idx < _this->NParams())
   {
     _this->GetParam(idx)->SetNormalized(value);
     _this->SetParameterInUIFromAPI(idx, value, true);
-    _this->OnParamChange(idx);
+    _this->OnParamChange(idx, kAutomation);
   }
 }

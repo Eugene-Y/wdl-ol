@@ -20,9 +20,6 @@
     <ClCompile Include="..\..\..\IPlug\IGraphics\IGraphicsAGG.cpp">
       <Filter>IGraphics\DrawClasses</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\IPlug\IGraphics\IGraphicsAGG_src.cpp">
-      <Filter>IGraphics\DrawClasses</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\..\IPlug\IGraphics\IGraphicsCairo.cpp">
       <Filter>IGraphics\DrawClasses</Filter>
     </ClCompile>
@@ -53,14 +50,17 @@
     <ClCompile Include="..\..\..\IPlug\IPlugBaseGraphics.cpp">
       <Filter>IPlug</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\IPlug\IPlugPresets.cpp">
+      <Filter>IPlug</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\IPlug\IPlugProcessor.cpp">
+      <Filter>IPlug</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\IPlugEffect.h" />
     <ClInclude Include="..\resources\resource.h">
       <Filter>resources</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\IPlug\IGraphics\IAutoGUI.h">
-      <Filter>IGraphics</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\IPlug\IGraphics\IControl.h">
       <Filter>IGraphics</Filter>
@@ -156,6 +156,13 @@
     <ClInclude Include="..\..\..\IPlug\IPlugBaseGraphics.h">
       <Filter>IPlug</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\IPlug\IPlugProcessor.h">
+      <Filter>IPlug</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\IPlug\IPlugPresets.h">
+      <Filter>IPlug</Filter>
+    </ClInclude>
+    <ClInclude Include="..\IPlugEffect_controls.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="resources">

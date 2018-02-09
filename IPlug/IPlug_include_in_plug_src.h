@@ -28,7 +28,7 @@
     return pGraphics;
   }
   #endif
-#elif defined OS_OSX
+#elif defined OS_MAC
   #ifndef NO_IGRAPHICS
   IGraphics* MakeGraphics(IPlugBaseGraphics& plug, int w, int h, int fps = 0)
   {
@@ -60,16 +60,18 @@
       IPlugInstanceInfo instanceInfo;
       instanceInfo.mVSTHostCallback = hostCallback;
       IPlugVST* pPlug = new PLUG_CLASS_NAME(instanceInfo);
-      if (pPlug) {
+      
+      if (pPlug)
+      {
         pPlug->EnsureDefaultPreset();
-        pPlug->mAEffect.numPrograms = std::max(pPlug->mAEffect.numPrograms, 1);
+        pPlug->mAEffect.numPrograms = std::max(pPlug->mAEffect.numPrograms, 1); // some hosts don't like 0 presets
         return &(pPlug->mAEffect);
       }
       return 0;
     }
     EXPORT int main(int hostCallback)
     {
-    #if defined OS_OSX
+    #if defined OS_MAC
       return (VstIntPtr) VSTPluginMain((audioMasterCallback)hostCallback);
     #else
       return (int) VSTPluginMain((audioMasterCallback)hostCallback);
@@ -142,8 +144,8 @@ END_FACTORY
   IPlug* MakePlug(void* pMemory)
   {
     IPlugInstanceInfo instanceInfo;
-    instanceInfo.mOSXBundleID.Set(BUNDLE_ID);
-    instanceInfo.mCocoaViewFactoryClassName.Set(VIEW_CLASS_STR);
+    instanceInfo.mBundleID.Set(BUNDLE_ID);
+    instanceInfo.mCocoaViewFactoryClassName.Set(AUV2_VIEW_CLASS_STR);
     
     if(pMemory)
       return new(pMemory) PLUG_CLASS_NAME(instanceInfo);
@@ -236,14 +238,14 @@ extern "C"
   {
 #ifndef AU_NO_COMPONENT_ENTRY
     //Component Manager
-    EXPORT ComponentResult PLUG_ENTRY(ComponentParameters* pParams, void* pPlug)
+    EXPORT ComponentResult AUV2_ENTRY(ComponentParameters* pParams, void* pPlug)
     {
       return IPlugAU::IPlugAUEntry(pParams, pPlug);
     }
 #endif
 
     //>10.7 SDK AUPlugin
-    EXPORT void* PLUG_FACTORY(const AudioComponentDescription* pInDesc)
+    EXPORT void* AUV2_FACTORY(const AudioComponentDescription* pInDesc)
     {
       return IPlugAUFactory::Factory(pInDesc);
     }
@@ -253,7 +255,7 @@ extern "C"
   IPlug* MakePlug()
   {
     IPlugInstanceInfo instanceInfo;
-    instanceInfo.mOSXBundleID.Set(BUNDLE_ID);
+    instanceInfo.mBundleID.Set(BUNDLE_ID);
     return new PLUG_CLASS_NAME(instanceInfo);
   }
 #elif defined AAX_API
@@ -271,8 +273,8 @@ extern "C"
     instanceInfo.mRTMidiOut = (RtMidiOut*) pMidiOutput;
     instanceInfo.mMidiOutChan = midiOutChan;
     
-    #if defined OS_OSX
-      instanceInfo.mOSXBundleID.Set(BUNDLE_ID);
+    #if defined OS_MAC
+      instanceInfo.mBundleID.Set(BUNDLE_ID);
     #endif
 
     return new PLUG_CLASS_NAME(instanceInfo);
@@ -295,13 +297,9 @@ extern "C"
 #endif
   */
 
-#ifndef PLUG_SC_CHANS
-  #define PLUG_SC_CHANS 0
-#endif
-
 #define PUBLIC_NAME PLUG_NAME
 
 #define IPLUG_CTOR(nParams, nPresets, instanceInfo) \
   IPlug(instanceInfo, IPlugConfig(nParams, nPresets, PLUG_CHANNEL_IO,\
     PUBLIC_NAME, "", PLUG_MFR, PLUG_VERSION_HEX, PLUG_UNIQUE_ID, PLUG_MFR_ID, \
-    PLUG_LATENCY, PLUG_DOES_MIDI, PLUG_DOES_STATE_CHUNKS, PLUG_IS_INSTRUMENT, PLUG_SC_CHANS))
+    PLUG_LATENCY, PLUG_DOES_MIDI, PLUG_DOES_STATE_CHUNKS, PLUG_IS_INSTRUMENT))

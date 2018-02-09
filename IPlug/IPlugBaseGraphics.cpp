@@ -57,9 +57,9 @@ void IPlugBaseGraphics::RedrawParamControls()
   }
 }
 
-void* IPlugBaseGraphics::OpenWindow(void* handle)
+void* IPlugBaseGraphics::OpenWindow(void* pHandle)
 {
-  return mGraphics->OpenWindow(handle);
+  return mGraphics->OpenWindow(pHandle);
 }
 
 void IPlugBaseGraphics::CloseWindow()
@@ -75,9 +75,17 @@ void IPlugBaseGraphics::SetParameterInUIFromAPI(int paramIdx, double value, bool
 
 void IPlugBaseGraphics::PrintDebugInfo()
 {
-  assert(mGraphics); // must call after AttachGraphics()
-  
+  if(!mGraphics)
+    return IPlugBase::PrintDebugInfo();
+    
   WDL_String buildInfo;
   GetBuildInfoStr(buildInfo);
-  DBGMSG("%s\n%s Graphics %i FPS\n", buildInfo.Get(), mGraphics->GetDrawingAPIStr(), mGraphics->FPS());
+  DBGMSG("\n%s\n%s Graphics %i FPS\n--------------------------------------------------\n", buildInfo.Get(), mGraphics->GetDrawingAPIStr(), mGraphics->FPS());
+
+#if defined TRACER_BUILD && !defined TRACE_TO_STDOUT
+  WDL_String pHomePath;
+  mGraphics->UserHomePath(pHomePath);
+  DBGMSG("Location of the Tracer Build Log: \n%s/%s\n\n", pHomePath.Get(), LOGFILE);
+#endif
+  
 }

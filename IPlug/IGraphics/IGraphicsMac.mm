@@ -1,3 +1,4 @@
+#ifndef NO_IGRAPHICS
 #include <Foundation/NSArchiver.h>
 #ifdef IGRAPHICS_NANOVG
 #import <QuartzCore/QuartzCore.h>
@@ -13,7 +14,7 @@
 
 int GetSystemVersion() 
 {
-  static SInt32 v;
+  static int32_t v;
   if (!v)
   {
     if (NSAppKitVersionNumber >= 1266.0) 
@@ -76,6 +77,18 @@ IGraphicsMac::~IGraphicsMac()
   CloseWindow();
 }
 
+bool IGraphicsMac::IsSandboxed()
+{
+  NSString* pHomeDir = NSHomeDirectory();
+  //  NSString* pBundleIdentifier = [[NSBundle mainBundle] bundleIdentifier];
+  
+  if ([pHomeDir containsString:@"Library/Containers/"])
+  {
+    return true;
+  }
+  return false;
+}
+
 void IGraphicsMac::CreateMetalLayer()
 {
 #ifdef IGRAPHICS_NANOVG
@@ -92,7 +105,7 @@ bool GetResourcePathFromBundle(const char* bundleID, const char* fileName, const
   while (ext >= fileName && *ext != '.') --ext;
   ++ext;
 
-  bool isCorrectType = !stricmp(ext, searchExt);
+  bool isCorrectType = !strcasecmp(ext, searchExt);
 
   NSBundle* pBundle = [NSBundle bundleWithIdentifier:ToNSString(bundleID)];
   NSString* pFile = [[[NSString stringWithCString:fileName encoding:NSUTF8StringEncoding] lastPathComponent] stringByDeletingPathExtension];
@@ -114,7 +127,30 @@ bool GetResourcePathFromBundle(const char* bundleID, const char* fileName, const
 
 bool IGraphicsMac::OSFindResource(const char* name, const char* type, WDL_String& result)
 {
-  return GetResourcePathFromBundle(GetBundleID(), name, type, result);
+  if(CSTR_NOT_EMPTY(name))
+  {
+    if(IsSandboxed())
+    {
+      printf("SAND");
+    }
+    
+    bool foundInBundle = GetResourcePathFromBundle(GetBundleID(), name, type, result);
+    
+    if(foundInBundle)
+      return true;
+    else
+    {
+      NSString* pPath = [NSString stringWithCString:name encoding:NSUTF8StringEncoding];
+
+      if([[NSFileManager defaultManager] fileExistsAtPath : pPath] == YES)
+      {        
+        result.Set(name);
+        return true;
+      }
+    }
+    
+  }
+  return false;
 }
 
 bool IGraphicsMac::MeasureText(const IText& text, const char* str, IRECT& destRect)
@@ -193,49 +229,56 @@ void IGraphicsMac::ShowMouseCursor()
   }
 }
 
-int IGraphicsMac::ShowMessageBox(const char* str, const char* pCaption, int type)
+int IGraphicsMac::ShowMessageBox(const char* str, const char* caption, int type)
 {
   int result = 0;
 
-  CFStringRef defaultButtonTitle = NULL;
-  CFStringRef alternateButtonTitle = NULL;
-  CFStringRef otherButtonTitle = NULL;
+  CFStringRef button1 = NULL;
+  CFStringRef button2 = NULL;
+  CFStringRef button3 = NULL;
 
   CFStringRef alertMessage = CFStringCreateWithCStringNoCopy(NULL, str, 0, kCFAllocatorNull);
-  CFStringRef alertHeader = CFStringCreateWithCStringNoCopy(NULL, pCaption, 0, kCFAllocatorNull);
+  CFStringRef alertHeader = CFStringCreateWithCStringNoCopy(NULL, caption, 0, kCFAllocatorNull);
 
   switch (type)
   {
+    case MB_OK:
+      button1 = CFSTR("OK");
+      break;
     case MB_OKCANCEL:
-      alternateButtonTitle = CFSTR("Cancel");
+      button1 = CFSTR("OK");
+      button2 = CFSTR("Cancel");
       break;
     case MB_YESNO:
-      defaultButtonTitle = CFSTR("Yes");
-      alternateButtonTitle = CFSTR("No");
+      button1 = CFSTR("Yes");
+      button2 = CFSTR("No");
       break;
     case MB_YESNOCANCEL:
-      defaultButtonTitle = CFSTR("Yes");
-      alternateButtonTitle = CFSTR("No");
-      otherButtonTitle = CFSTR("Cancel");
+      button1 = CFSTR("Yes");
+      button2 = CFSTR("No");
+      button3 = CFSTR("Cancel");
       break;
   }
 
   CFOptionFlags response = 0;
-  CFUserNotificationDisplayAlert(0, kCFUserNotificationNoteAlertLevel, NULL, NULL, NULL,
-                                 alertHeader, alertMessage,
-                                 defaultButtonTitle, alternateButtonTitle, otherButtonTitle,
-                                 &response);
+  CFUserNotificationDisplayAlert(0, kCFUserNotificationNoteAlertLevel, NULL, NULL, NULL, alertHeader, alertMessage, button1, button2, button3, &response);
 
   CFRelease(alertMessage);
   CFRelease(alertHeader);
 
-  switch (response) // TODO: check the return type, what about IDYES
+  switch (response)
   {
     case kCFUserNotificationDefaultResponse:
-      result = IDOK;
+      if(type == MB_OK || type == MB_OKCANCEL)
+        result = IDOK;
+      else
+        result = IDYES;
       break;
     case kCFUserNotificationAlternateResponse:
-      result = IDNO;
+      if(type == MB_OKCANCEL)
+        result = IDCANCEL;
+      else
+        result = IDNO;
       break;
     case kCFUserNotificationOtherResponse:
       result = IDCANCEL;
@@ -320,6 +363,12 @@ void IGraphicsMac::DesktopPath(WDL_String& path)
   NSArray* pPaths = NSSearchPathForDirectoriesInDomains(NSDesktopDirectory, NSUserDomainMask, YES);
   NSString* pDesktopDirectory = [pPaths objectAtIndex:0];
   path.Set([pDesktopDirectory UTF8String]);
+}
+
+void IGraphicsMac::UserHomePath(WDL_String& path)
+{
+  NSString* pHomeDir = NSHomeDirectory();
+  path.Set([pHomeDir UTF8String]);
 }
 
 void IGraphicsMac::VST3PresetsPath(WDL_String& path, bool isSystem)
@@ -497,7 +546,7 @@ void IGraphicsMac::CreateTextEntry(IControl* pControl, const IText& text, const 
 bool IGraphicsMac::OpenURL(const char* url, const char* msgWindowTitle, const char* confirmMsg, const char* errMsgOnFailure)
 {
   #pragma REMINDER("Warning and error messages for OpenURL not implemented")
-  NSURL* pNSURL = 0;
+  NSURL* pNSURL = nullptr;
   if (strstr(url, "http"))
   {
     pNSURL = [NSURL URLWithString:ToNSString(url)];
@@ -524,10 +573,7 @@ void* IGraphicsMac::GetWindow()
 // static
 int IGraphicsMac::GetUserOSVersion()   // Returns a number like 0x1050 (10.5).
 {
-  SInt32 ver = GetSystemVersion();
-  
-  Trace(TRACELOC, "%x", ver);
-  return (int) ver;
+  return (int) GetSystemVersion();
 }
 
 bool IGraphicsMac::GetTextFromClipboard(WDL_String& str)
@@ -547,7 +593,6 @@ bool IGraphicsMac::GetTextFromClipboard(WDL_String& str)
 }
 
 //TODO: THIS IS TEMPORARY, TO EASE DEVELOPMENT
-#ifndef NO_IGRAPHICS
 #ifdef IGRAPHICS_AGG
 #include "IGraphicsAGG.cpp"
 #include "agg_mac_pmap.mm"
@@ -561,4 +606,5 @@ bool IGraphicsMac::GetTextFromClipboard(WDL_String& str)
 #else
 #include "IGraphicsLice.cpp"
 #endif
-#endif
+
+#endif// NO_IGRAPHICS

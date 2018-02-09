@@ -2,7 +2,6 @@
 
 #include "IGraphicsAGG.h"
 
-static StaticStorage<agg::pixel_map> s_bitmapCache;
 static StaticStorage<agg::font> s_fontCache;
 
 #pragma mark -
@@ -18,37 +17,6 @@ IGraphicsAGG::IGraphicsAGG(IPlugBaseGraphics& plug, int w, int h, int fps)
 
 IGraphicsAGG::~IGraphicsAGG()
 {
-}
-
-IBitmap IGraphicsAGG::LoadBitmap(const char* name, int nStates, bool framesAreHoriztonal, double scale)
-{
-  double targetScale = GetDisplayScale() / scale;
-  double scaleRes = scale * targetScale;
-  
-  agg::pixel_map* pPixelMap = s_bitmapCache.Find(name, scaleRes);
-  
-  if (!pPixelMap) //do we have a bitmap for this display scale
-  {
-    WDL_String fullPath;
-    bool resourceFound = OSFindResource(name, "png", fullPath);
-    assert(resourceFound); // Protect against typos in resource.h and .rc files.
-
-    if(CSTR_NOT_EMPTY(fullPath.Get()))
-    {
-      pPixelMap = LoadAPIBitmap(fullPath.Get());
-      resourceFound = pPixelMap != nullptr;
-      assert(resourceFound); // Protect against typos in resource.h and .rc files.
-      
-      if (scale != GetDisplayScale()) {
-        IBitmap bitmap(pPixelMap, pPixelMap->width(), pPixelMap->height(), nStates, framesAreHoriztonal, scale, name);
-        return ScaleBitmap(bitmap, name, targetScale);
-      }
-      
-      s_bitmapCache.Add(pPixelMap, name, targetScale);
-    }
-  }
-  
-  return IBitmap(pPixelMap, pPixelMap->width() / targetScale, pPixelMap->height() / targetScale, nStates, framesAreHoriztonal, scale, name);
 }
 
 void IGraphicsAGG::SetDisplayScale(int scale)
@@ -91,13 +59,13 @@ void IGraphicsAGG::DrawBitmap(IBitmap& bitmap, const IRECT& dest, int srcX, int 
   srcX *= GetDisplayScale();
   srcY *= GetDisplayScale();
 
-  agg::pixel_map* pPixelMap = (agg::pixel_map*) bitmap.mData;
+  agg::pixel_map* pPixelMap = (agg::pixel_map*) bitmap.GetRawBitmap();
   agg::rendering_buffer buf(pPixelMap->buf(), pPixelMap->width(), pPixelMap->height(), pPixelMap->row_bytes());
   
   mPixf.comp_op(AGGBlendMode(pBlend));
   
-  agg::rect_i r(srcX, srcY, srcX + rect.W()-1, srcY + rect.H()); //TODO: suspicious -1 here necessary to avoid problems with DrawBitmappedText
-  mRenBase.blend_from(PixfmtType(buf), &r, -srcX + rect.L, -srcY + rect.T);
+  agg::rect_i r(srcX, srcY, srcX + rect.W(), srcY + rect.H());
+  mRenBase.blend_from(PixfmtType(buf), &r, -srcX + rect.L, -srcY + rect.T, AGGCover(pBlend));
 }
 
 void IGraphicsAGG::DrawRotatedBitmap(IBitmap& bitmap, int destCtrX, int destCtrY, double angle, int yOffsetZeroDeg, const IBlend* pBlend)
@@ -107,17 +75,17 @@ void IGraphicsAGG::DrawRotatedBitmap(IBitmap& bitmap, int destCtrX, int destCtrY
   destCtrX *= GetDisplayScale();
   destCtrY *= GetDisplayScale();
 
-  agg::pixel_map* pPixelMap = (agg::pixel_map*) bitmap.mData;
+  agg::pixel_map* pPixelMap = (agg::pixel_map*) bitmap.GetRawBitmap();
   agg::rendering_buffer buf(pPixelMap->buf(), pPixelMap->width(), pPixelMap->height(), pPixelMap->row_bytes());
   
   PixfmtType imgPixf(buf);
   
-  const double width = bitmap.W * GetDisplayScale();
-  const double height = bitmap.H * GetDisplayScale();
+  const double width = bitmap.W() * GetDisplayScale();
+  const double height = bitmap.H() * GetDisplayScale();
 
   agg::trans_affine srcMatrix;
   srcMatrix *= agg::trans_affine_translation(-(width / 2), -(height / 2));
-  srcMatrix *= agg::trans_affine_rotation(angle);
+  srcMatrix *= agg::trans_affine_rotation(DegToRad(angle));
   srcMatrix *= agg::trans_affine_translation(destCtrX, destCtrY);
   
   agg::trans_affine imgMtx = srcMatrix;
@@ -147,9 +115,9 @@ void IGraphicsAGG::DrawRotatedMask(IBitmap& base, IBitmap& mask, IBitmap& top, i
   x *= GetDisplayScale();
   y *= GetDisplayScale();
 
-  agg::pixel_map* pm_base = (agg::pixel_map*)base.mData;
-  agg::pixel_map* pm_mask = (agg::pixel_map*)mask.mData;
-  agg::pixel_map* pm_top = (agg::pixel_map*)top.mData;
+  agg::pixel_map* pm_base = (agg::pixel_map*) base.GetRawBitmap();
+  agg::pixel_map* pm_mask = (agg::pixel_map*) mask.GetRawBitmap();
+  agg::pixel_map* pm_top = (agg::pixel_map*) top.GetRawBitmap();
   
   agg::rendering_buffer rbuf_base(pm_base->buf(), pm_base->width(), pm_base->height(), pm_base->row_bytes());
   agg::rendering_buffer rbuf_mask(pm_mask->buf(), pm_mask->width(), pm_mask->height(), pm_mask->row_bytes());
@@ -166,8 +134,8 @@ void IGraphicsAGG::DrawRotatedMask(IBitmap& base, IBitmap& mask, IBitmap& top, i
   ren_base.blend_from(img_mask, 0, 0, agg::cover_mask);
   ren_base.copy_from(img_top);
   
-  const double width = base.W * GetDisplayScale();
-  const double height = base.H * GetDisplayScale();
+  const double width = base.W() * GetDisplayScale();
+  const double height = base.H() * GetDisplayScale();
   
   agg::trans_affine srcMatrix;
   srcMatrix *= agg::trans_affine_translation(-(width / 2), -(height / 2));
@@ -263,7 +231,7 @@ void IGraphicsAGG::DrawConvexPolygon(const IColor& color, float* x, float* y, in
 void IGraphicsAGG::DrawArc(const IColor& color, float cx, float cy, float r, float aMin, float aMax, const IBlend* pBlend)
 {
   const float s = GetDisplayScale();
-  agg::arc arc(cx * s, cy * s, r * s, r * s, DegToRad(aMin), DegToRad(aMax));
+  agg::arc arc(cx * s, cy * s, r * s, r * s, DegToRad(aMin-90.f), DegToRad(aMax-90.f));
   Stroke(color, arc);
 }
 
@@ -304,7 +272,7 @@ void IGraphicsAGG::FillArc(const IColor& color, float cx, float cy, float r, flo
 {
   agg::path_storage path;
   const float s = GetDisplayScale();
-  agg::arc arc(cx * s, cy * s, r * s, r * s, DegToRad(aMin), DegToRad(aMax));
+  agg::arc arc(cx * s, cy * s, r * s, r * s, DegToRad(aMin-90.f), DegToRad(aMax-90.f));
   path.concat_path(arc);
   path.line_to(cx * s, cy * s);
   if (path.total_vertices() > 2)
@@ -346,22 +314,10 @@ IColor IGraphicsAGG::GetPoint(int x, int y)
   IColor color(point.a, point.r, point.g, point.b);
   return color;
 }
-
-IBitmap IGraphicsAGG::ScaleBitmap(const IBitmap& srcbitmap, const char* cacheName, double scale)
+/*
+IBitmap IGraphicsAGG::CropBitmap(const IBitmap& srcbitmap, const IRECT& rect, const char* cacheName, int scale)
 {
-  const int destW = srcbitmap.W * scale;
-  const int destH = srcbitmap.H * scale;
-  
-  agg::pixel_map* pCopy = ScaleAPIBitmap((agg::pixel_map*) srcbitmap.mData, destW, destH);
-
-  s_bitmapCache.Add(pCopy, cacheName, scale);
-  
-  return IBitmap(pCopy, destW, destH, srcbitmap.N, srcbitmap.mFramesAreHorizontal, scale, cacheName);
-}
-
-IBitmap IGraphicsAGG::CropBitmap(const IBitmap& srcbitmap, const IRECT& rect, const char* cacheName, double scale)
-{
-  agg::pixel_map* pPixelMap = (agg::pixel_map*)srcbitmap.mData;
+  agg::pixel_map* pPixelMap = (agg::pixel_map*) srcbitmap.mAPIBitmap->GetBitmap();
   agg::pixel_map* pCopy = (agg::pixel_map*) CreateAPIBitmap(rect.W(), rect.H());
   
   agg::rendering_buffer src;
@@ -381,11 +337,11 @@ IBitmap IGraphicsAGG::CropBitmap(const IBitmap& srcbitmap, const IRECT& rect, co
   
   renbase.copy_from(imgPixfSrc, &src_r, -rect.L, -rect.T);
   
-  s_bitmapCache.Add(pCopy, cacheName, scale);
+  AGGBitmap *pAPIBitmap = new AGGBitmap(pCopy, scale);
   
-  return IBitmap(pCopy, pCopy->width(), pCopy->height(), srcbitmap.N, srcbitmap.mFramesAreHorizontal);
+  return IBitmap(new AGGBitmap(pCopy, scale));  //TODO: surface will not be destroyed, unless this is retained
 }
-
+*/
 //IBitmap IGraphicsAGG::CreateIBitmap(const char* cacheName, int w, int h)
 //{
 //  agg::pixel_map* pPixelMap = (agg::pixel_map*) CreateAPIBitmap(w, h);
@@ -399,7 +355,7 @@ IBitmap IGraphicsAGG::CropBitmap(const IBitmap& srcbitmap, const IRECT& rect, co
 
 agg::pixel_map* IGraphicsAGG::CreateAPIBitmap(int w, int h)
 {
-#ifdef OS_OSX
+#ifdef OS_MAC
   agg::pixel_map_mac* pPixelMap = new agg::pixel_map_mac();
 #else
   //TODO: win
@@ -410,9 +366,10 @@ agg::pixel_map* IGraphicsAGG::CreateAPIBitmap(int w, int h)
   return pPixelMap;
 }
 
-agg::pixel_map* IGraphicsAGG::LoadAPIBitmap(const char* path)
+APIBitmap* IGraphicsAGG::LoadAPIBitmap(const WDL_String& resourcePath, int scale)
 {
-#ifdef OS_OSX
+  const char *path = resourcePath.Get();
+#ifdef OS_MAC
   if (CSTR_NOT_EMPTY(path))
   {
     const char* ext = path+strlen(path)-1;
@@ -427,9 +384,9 @@ agg::pixel_map* IGraphicsAGG::LoadAPIBitmap(const char* path)
     if (!isjpg && !ispng) return 0;
 #endif
     
-    agg::pixel_map_mac * pPixelMap = new agg::pixel_map_mac();
+    agg::pixel_map_mac* pPixelMap = new agg::pixel_map_mac();
     if (pPixelMap->load_img(path, ispng ? agg::pixel_map::format_png : agg::pixel_map::format_jpg))
-      return pPixelMap;
+      return new AGGBitmap(pPixelMap, scale);
     else
       delete pPixelMap;
   }
@@ -438,11 +395,15 @@ agg::pixel_map* IGraphicsAGG::LoadAPIBitmap(const char* path)
   //TODO: win
 #endif
   
-  return 0;
+  return new APIBitmap();
 }
 
-agg::pixel_map* IGraphicsAGG::ScaleAPIBitmap(agg::pixel_map* pSourcePixelMap, int destW, int destH)
+APIBitmap* IGraphicsAGG::ScaleAPIBitmap(const APIBitmap* pBitmap, int scale)
 {
+  int destW = (pBitmap->GetWidth() / pBitmap->GetScale()) * scale;
+  int destH = (pBitmap->GetHeight() / pBitmap->GetScale()) * scale;
+    
+  agg::pixel_map* pSourcePixelMap = (agg::pixel_map*) pBitmap->GetBitmap();
   agg::pixel_map* pCopy = (agg::pixel_map*) CreateAPIBitmap(destW, destH);
   
   agg::rendering_buffer src;
@@ -485,26 +446,26 @@ agg::pixel_map* IGraphicsAGG::ScaleAPIBitmap(agg::pixel_map* pSourcePixelMap, in
   ras.add_path(tr);
   agg::render_scanlines_aa(ras, sl, renbase, sa, sg);
   
-  return pCopy;
+  return new AGGBitmap(pCopy, scale);
 }
 
 void IGraphicsAGG::RenderDrawBitmap()
 {
-#ifdef OS_OSX
-  mPixelMap.draw((CGContext*) GetPlatformContext(), GetDisplayScale() / GetScale());
+#ifdef OS_MAC
+  mPixelMap.draw((CGContext*) GetPlatformContext(), GetDisplayScale());
 #else // OS_WIN
   //TODO: win
 #endif
 }
 
-void IGraphicsAGG::CalculateTextLines(WDL_TypedBuf<LineInfo> * lines, const IRECT& rect, const char* str, FontManagerType& manager)
+void IGraphicsAGG::CalculateTextLines(WDL_TypedBuf<LineInfo>* pLines, const IRECT& rect, const char* str, FontManagerType& manager)
 {
   LineInfo info;
   info.mStartChar = 0;
   info.mEndChar = (int) strlen(str);
-  lines->Add(info);
+  pLines->Add(info);
   
-  LineInfo* pLines = lines->Get();
+  LineInfo* pLine = pLines->Get();
   
   size_t lineStart = 0;
   size_t lineWidth = 0;
@@ -519,7 +480,7 @@ void IGraphicsAGG::CalculateTextLines(WDL_TypedBuf<LineInfo> * lines, const IREC
     
     if (pGlyph)
     {
-      xCount +pGlyph->advance_x;
+      xCount += pGlyph->advance_x;
     }
 
     cstr++;
@@ -527,22 +488,22 @@ void IGraphicsAGG::CalculateTextLines(WDL_TypedBuf<LineInfo> * lines, const IREC
     
     if (*cstr == ' ' || *cstr == 0)
     {
-      pLines->mStartChar = (int) lineStart;
-      pLines->mEndChar = (int)  linePos;
-      pLines->mWidth = xCount;
+      pLine->mStartChar = (int) lineStart;
+      pLine->mEndChar = (int)  linePos;
+      pLine->mWidth = xCount;
     }
     
     if (rect.W() > 0 && xCount >= rect.W())
     {
-      assert(pLines);
+      assert(pLine);
       
-      cstr = &str[pLines->mEndChar];
-      lineStart = pLines->mEndChar + 1;
-      linePos = pLines->mEndChar;
+      cstr = &str[pLine->mEndChar];
+      lineStart = pLine->mEndChar + 1;
+      linePos = pLine->mEndChar;
       
       LineInfo info;
-      lines->Add(info);
-      pLines++;
+      pLines->Add(info);
+      pLine++;
       
       assert(pLines);
       
@@ -562,9 +523,9 @@ bool IGraphicsAGG::DrawText(const IText& text, const char* str, IRECT& destRect,
 //
 //  IRECT rect = destRect;
 //  rect.Scale(GetDisplayScale());
-
-//  renderer_solid ren_solid(mRenBase);
-//  renderer_bin ren_bin(mRenBase);
+//
+//  rendererSolid renSolid(mRenBase);
+//  rendererBin renBin(mRenBase);
 //
 //  agg::scanline_u8 sl;
 //  agg::rasterizer_scanline_aa<> ras;
@@ -597,9 +558,9 @@ bool IGraphicsAGG::DrawText(const IText& text, const char* str, IRECT& destRect,
 //  mFontContour.width(-weight * (text.mSize * 0.05) * GetDisplayScale());
 //
 //  IFontData font = LoadFont(text.mFont, text.mSize);
-//  agg::font * font_data = (agg::font *)font.mData;
+//  agg::font* pFontData = (agg::font *)font.mData;
 //
-//  if (font_data != 0 && mFontEngine.load_font("", 0, gren, font_data->buf(), font_data->size()))
+//  if (pFontData != 0 && mFontEngine.load_font("", 0, gren, pFontData->buf(), pFontData->size()))
 //  {
 //    mFontEngine.hinting(hinting);
 //    mFontEngine.height(text.mSize * GetDisplayScale());
@@ -623,14 +584,14 @@ bool IGraphicsAGG::DrawText(const IText& text, const char* str, IRECT& destRect,
 //          x = rect.L;
 //          break;
 //        case IText::kAlignCenter:
-//          x = rect.L + ((rect.W() - pLines->width) / 2);
+//          x = rect.L + ((rect.W() - pLines->mWidth) / 2);
 //          break;
 //        case IText::kAlignFar:
-//          x = rect.L + (rect.W() - pLines->width);
+//          x = rect.L + (rect.W() - pLines->mWidth);
 //          break;
 //      }
 //
-//      for (size_t c=pLines->start_char; c<pLines->end_char; c++)
+//      for (size_t c=pLines->mStartChar; c<pLines->mEndChar; c++)
 //      {
 //        const agg::glyph_cache* pGlyph = mFontManager.glyph(str[c]);
 //
@@ -643,22 +604,22 @@ bool IGraphicsAGG::DrawText(const IText& text, const char* str, IRECT& destRect,
 //
 //          mFontManager.init_embedded_adaptors(pGlyph, x, y);
 //
-//          switch (pGlyph->dataType)
+//          switch (pGlyph->data_type)
 //          {
 //            case agg::glyph_data_mono:
 //
-//              ren_bin.color(IColorToAggColor(text.mColor));
+//              renBin.color(IColorToAggColor(text.mColor));
 //              agg::render_scanlines(mFontManager.mono_adaptor(),
 //                                    mFontManager.mono_scanline(),
-//                                    ren_bin);
+//                                    renBin);
 //              break;
 //
 //            case agg::glyph_data_gray8:
 //
-//              ren_solid.color(IColorToAggColor(text.mColor));
+//              renSolid.color(IColorToAggColor(text.mColor));
 //              agg::render_scanlines(mFontManager.gray8_adaptor(),
 //                                    mFontManager.gray8_scanline(),
-//                                    ren_solid);
+//                                    renSolid);
 //              break;
 //
 //            case agg::glyph_data_outline:
@@ -676,8 +637,8 @@ bool IGraphicsAGG::DrawText(const IText& text, const char* str, IRECT& destRect,
 //                ras.add_path(mFontContour);
 //              }
 //
-//              ren_solid.color(IColorToAggColor(text.mColor));
-//              agg::render_scanlines(ras, sl, ren_solid);
+//              renSolid.color(IColorToAggColor(text.mColor));
+//              agg::render_scanlines(ras, sl, renSolid);
 //
 //              break;
 //
@@ -736,9 +697,9 @@ bool IGraphicsAGG::MeasureText(const IText& text, const char* str, IRECT& destRe
 //  mFontContour.width(-weight * (text.mSize * 0.05) * GetDisplayScale());
 //
 //  IFontData font = LoadFont(text.mFont, text.mSize);
-//  agg::font * font_data = (agg::font *)font.mData;
+//  agg::font * pFontData = (agg::font *)font.mData;
 //
-//  if (mFontEngine.load_font("", 0, gren, font_data->buf(), font_data->size()))
+//  if (mFontEngine.load_font("", 0, gren, pFontData->buf(), pFontData->size()))
 //  {
 //    mFontEngine.hinting(hinting);
 //    mFontEngine.height(text.mSize * GetDisplayScale());

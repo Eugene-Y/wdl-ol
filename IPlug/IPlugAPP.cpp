@@ -1,16 +1,20 @@
 #include "IPlugAPP.h"
-#ifdef OS_OSX
+#ifdef OS_MAC
 #include "swell.h"
 #endif
 extern HWND gHWND;
 
 IPlugAPP::IPlugAPP(IPlugInstanceInfo instanceInfo, IPlugConfig c)
-: IPLUG_BASE_CLASS(c, kAPISA)
+: IPLUG_BASE_CLASS(c, kAPIAPP)
+, IPlugProcessor<PLUG_SAMPLE_DST>(c, kAPIAPP)
+, IPlugPresetHandler(c, kAPIAPP)
 {
+  AttachPresetHandler(this);
+
   Trace(TRACELOC, "%s%s", c.effectName, c.channelIOStr);
 
-  SetInputChannelConnections(0, NInChannels(), true);
-  SetOutputChannelConnections(0, NOutChannels(), true);
+  SetChannelConnections(ERoute::kInput, 0, MaxNChannels(ERoute::kInput), true);
+  SetChannelConnections(ERoute::kOutput, 0, MaxNChannels(ERoute::kOutput), true);
 
   SetBlockSize(DEFAULT_BLOCK_SIZE);
   SetHost("standalone", c.vendorVersion);
@@ -23,7 +27,7 @@ void IPlugAPP::ResizeGraphics(int w, int h, double scale)
 {
   if (GetHasUI())
   {
-    #ifdef OS_OSX
+    #ifdef OS_MAC
     #define TITLEBAR_BODGE 22 //TODO: sort this out
     RECT r;
     GetWindowRect(gHWND, &r);
@@ -33,17 +37,16 @@ void IPlugAPP::ResizeGraphics(int w, int h, double scale)
   }
 }
 
-bool IPlugAPP::SendMidiMsg(IMidiMsg& msg)
+bool IPlugAPP::SendMidiMsg(const IMidiMsg& msg)
 {
+  uint8_t status;
   if (DoesMIDI())
   {
     // if the midi channel out filter is set, reassign the status byte appropriately
     if (mMidiOutChan)
-    {
-      msg.mStatus = mMidiOutChan-1 | ((unsigned int) msg.StatusMsg() << 4) ;
-    }
+      status = mMidiOutChan-1 | ((unsigned int) msg.StatusMsg() << 4) ;
 
-    std::vector<unsigned char> message;
+    std::vector<uint8_t> message;
     message.push_back( msg.mStatus );
     message.push_back( msg.mData1 );
     message.push_back( msg.mData2 );
@@ -61,7 +64,8 @@ bool IPlugAPP::SendSysEx(ISysEx& msg)
   {  
     std::vector<unsigned char> message;
     
-    for (int i = 0; i < msg.mSize; i++) {
+    for (int i = 0; i < msg.mSize; i++)
+    {
       message.push_back(msg.mData[i]);
     }
     

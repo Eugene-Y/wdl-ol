@@ -425,14 +425,6 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="..\..\..\IPlug\IGraphics\IGraphicsAGG_src.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClCompile>
     <ClCompile Include="..\..\..\IPlug\IGraphics\IGraphicsCairo.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|Win32'">true</ExcludedFromBuild>
@@ -477,6 +469,10 @@
     <ClCompile Include="..\..\..\IPlug\IPlugBase.cpp" />
     <ClCompile Include="..\..\..\IPlug\IPlugBaseGraphics.cpp" />
     <ClCompile Include="..\..\..\IPlug\IPlugParameter.cpp" />
+    <ClCompile Include="..\..\..\IPlug\IPlugPresets.cpp" />
+    <ClCompile Include="..\..\..\IPlug\IPlugProcessor.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="..\IPlugEffect.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -511,7 +507,6 @@
   <ItemGroup>
     <ClInclude Include="..\..\..\IPlug\AAX\IPlugAAX_Parameters.h" />
     <ClInclude Include="..\..\..\IPlug\AAX\IPlugAAX_TaperDelegate.h" />
-    <ClInclude Include="..\..\..\IPlug\IGraphics\IAutoGUI.h" />
     <ClInclude Include="..\..\..\IPlug\IGraphics\IControl.h" />
     <ClInclude Include="..\..\..\IPlug\IGraphics\IControls.h" />
     <ClInclude Include="..\..\..\IPlug\IGraphics\IGraphics.h" />
@@ -592,6 +587,8 @@
     <ClInclude Include="..\..\..\IPlug\IPlugMidi.h" />
     <ClInclude Include="..\..\..\IPlug\IPlugPlatform.h" />
     <ClInclude Include="..\..\..\IPlug\IPlugParameter.h" />
+    <ClInclude Include="..\..\..\IPlug\IPlugPresets.h" />
+    <ClInclude Include="..\..\..\IPlug\IPlugProcessor.h" />
     <ClInclude Include="..\..\..\IPlug\IPlugStructs.h" />
     <ClInclude Include="..\..\..\IPlug\IPlugUtilities.h" />
     <ClInclude Include="..\..\..\IPlug\IPlug_include_in_plug_hdr.h" />
@@ -599,6 +596,7 @@
     <ClInclude Include="..\..\..\IPlug\NChanDelay.h" />
     <ClInclude Include="..\config.h" />
     <ClInclude Include="..\IPlugEffect.h" />
+    <ClInclude Include="..\IPlugEffect_controls.h" />
     <ClInclude Include="..\resources\resource.h" />
   </ItemGroup>
   <ItemGroup>

@@ -17,13 +17,13 @@ public:
   
   ~IPlugBaseGraphics();
   
-  IGraphics* GetGUI() { return mGraphics; }
+  IGraphics* GetGUI() { assert(mGraphics); return mGraphics; }
   void* GetAAXViewInterface() override { return (void*) GetGUI(); }
 
   int GetUIWidth() override;
   int GetUIHeight() override;
 
-  void* OpenWindow(void* handle) override;
+  void* OpenWindow(void* pHandle) override;
   void CloseWindow() override;
   
   void AttachGraphics(IGraphics* pGraphics);

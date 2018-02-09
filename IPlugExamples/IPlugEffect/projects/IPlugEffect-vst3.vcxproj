@@ -268,7 +268,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="../config.h" />
-    <ClInclude Include="..\..\..\IPlug\IGraphics\IAutoGUI.h" />
     <ClInclude Include="..\..\..\IPlug\IGraphics\IControl.h" />
     <ClInclude Include="..\..\..\IPlug\IGraphics\IControls.h" />
     <ClInclude Include="..\..\..\IPlug\IGraphics\IGraphics.h" />
@@ -341,6 +340,8 @@
     <ClInclude Include="..\..\..\IPlug\IPlugMidi.h" />
     <ClInclude Include="..\..\..\IPlug\IPlugPlatform.h" />
     <ClInclude Include="..\..\..\IPlug\IPlugParameter.h" />
+    <ClInclude Include="..\..\..\IPlug\IPlugPresets.h" />
+    <ClInclude Include="..\..\..\IPlug\IPlugProcessor.h" />
     <ClInclude Include="..\..\..\IPlug\IPlugStructs.h" />
     <ClInclude Include="..\..\..\IPlug\IPlugUtilities.h" />
     <ClInclude Include="..\..\..\IPlug\IPlugVST.h" />
@@ -424,6 +425,7 @@
     <ClInclude Include="..\..\..\VST3_SDK\public.sdk\source\vst\vstsinglecomponenteffect.h" />
     <ClInclude Include="..\..\..\VST3_SDK\public.sdk\source\vst\vstspeakerarray.h" />
     <ClInclude Include="..\IPlugEffect.h" />
+    <ClInclude Include="..\IPlugEffect_controls.h" />
     <ClInclude Include="..\resources\resource.h" />
   </ItemGroup>
   <ItemGroup>
@@ -431,14 +433,6 @@
     <ClCompile Include="..\..\..\IPlug\IGraphics\IControls.cpp" />
     <ClCompile Include="..\..\..\IPlug\IGraphics\IGraphics.cpp" />
     <ClCompile Include="..\..\..\IPlug\IGraphics\IGraphicsAGG.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClCompile>
-    <ClCompile Include="..\..\..\IPlug\IGraphics\IGraphicsAGG_src.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
@@ -482,6 +476,10 @@
     <ClCompile Include="..\..\..\IPlug\IPlugBase.cpp" />
     <ClCompile Include="..\..\..\IPlug\IPlugBaseGraphics.cpp" />
     <ClCompile Include="..\..\..\IPlug\IPlugParameter.cpp" />
+    <ClCompile Include="..\..\..\IPlug\IPlugPresets.cpp" />
+    <ClCompile Include="..\..\..\IPlug\IPlugProcessor.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="..\..\..\IPlug\IPlugVST3.cpp" />
     <ClCompile Include="..\..\..\VST3_SDK\base\source\baseiids.cpp" />
     <ClCompile Include="..\..\..\VST3_SDK\base\source\fbuffer.cpp" />
